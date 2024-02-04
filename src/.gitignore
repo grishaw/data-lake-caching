@@ -3,3 +3,4 @@
 target
 dblp-*
 .DS_Store
+/test/resources/tpch/

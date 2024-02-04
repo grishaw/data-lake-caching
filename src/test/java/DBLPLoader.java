@@ -1,7 +1,4 @@
 import jdk.nashorn.internal.ir.annotations.Ignore;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.spark.SparkConf;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.functions;
@@ -11,7 +8,7 @@ public class DBLPLoader {
 
     @Ignore
     public void testDBLP_Articles(){
-        SparkSession spark = initTestSparkSession("myTest");
+        SparkSession spark = TestUtils.initTestSparkSession("myTest");
 
         Dataset df = spark.read()
                 .format("xml")
@@ -25,7 +22,7 @@ public class DBLPLoader {
 
     @Ignore
     public void testDBLP_Conferences(){
-        SparkSession spark = initTestSparkSession("myTest");
+        SparkSession spark = TestUtils.initTestSparkSession("myTest");
 
         Dataset df = spark.read()
                 .format("xml")
@@ -39,7 +36,7 @@ public class DBLPLoader {
 
     @Ignore
     public void combineDBLP(){
-        SparkSession spark = initTestSparkSession("myTest");
+        SparkSession spark = TestUtils.initTestSparkSession("myTest");
 
         Dataset conf = spark.read().parquet("src/test/resources/dblp-parquet-10-conf");
         conf = conf.withColumn("type", functions.lit("conference"));
@@ -59,7 +56,7 @@ public class DBLPLoader {
 
     @Test
     public void testParquet(){
-        SparkSession spark = initTestSparkSession("myTest");
+        SparkSession spark = TestUtils.initTestSparkSession("myTest");
 
         Dataset conf = spark.read().parquet("src/test/resources/dblp-1000");
         conf.printSchema();
@@ -68,21 +65,4 @@ public class DBLPLoader {
     }
 
 
-    public static SparkSession initTestSparkSession(String appName) {
-
-        Logger.getLogger("org.apache").setLevel(Level.WARN);
-
-        SparkConf sparkConf = new SparkConf()
-                .setAppName(appName)
-                .setMaster("local[*, 2]")
-                .set("spark.driver.host", "localhost")
-                .set("spark.sql.shuffle.partitions", "5")
-                .set("spark.default.parallelism", "5")
-                .set("spark.sql.autoBroadcastJoinThreshold", "-1")
-                ;
-
-        return SparkSession.builder()
-                .config(sparkConf)
-                .getOrCreate();
-    }
 }
