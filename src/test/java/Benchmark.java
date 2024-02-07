@@ -1,5 +1,6 @@
 import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.Test;
 
@@ -17,10 +18,14 @@ public class Benchmark {
     public void myBenchmark(){
         SparkSession sparkSession = TestUtils.initTestSparkSession("myBenchmark");
 
-        Dataset lineItem = sparkSession.read().parquet("src/test/resources/tpch/lineitem-10k/");
+        LinkedList <Long> listCoverage = new LinkedList<>();
+        LinkedList <Long> listTimes = new LinkedList<>();
+        LinkedList <ConditionValues> cache = new LinkedList<>();
+        LinkedList <Integer> cachedUsed = new LinkedList<>();
 
-        LinkedList <Long> list = new LinkedList<>();
         for (int i=0; i<20; i++){
+
+            long startTime = System.currentTimeMillis();
 
             int p1 = ThreadLocalRandom.current().nextInt(1000, 100000);
             int p2 = ThreadLocalRandom.current().nextInt(1000, 100000);
@@ -44,17 +49,45 @@ public class Benchmark {
             double discountFrom = Math.min(d1, d2);
             double discountTo = Math.max(d1, d2) + 0.01;
 
+            ConditionValues cur = new ConditionValues(extendedPriceFrom, extendedPriceTo, shipDateFrom,
+                    shipDateFrom, discountFrom, discountTo, quantityFrom, quantityTo, null);
+
+            List<String> cachedFiles = getFilesFromCache(cache, cur);
+
+            Dataset lineItem;
+            if (cachedFiles == null) {
+                lineItem = sparkSession.read().parquet("src/test/resources/tpch/lineitem-10k/");
+            }else{
+                System.out.println("using cache in read !!!!");
+                System.out.println("cached files size = " + cachedFiles.size());
+                lineItem = sparkSession.read().parquet(cachedFiles.toArray(new String[0]));
+            }
+
             Dataset result = lineItem.where(getQueryCondition(extendedPriceFrom, extendedPriceTo,
                     shipDateFrom, shipDateTo, discountFrom, discountTo,
                     quantityFrom, quantityTo));
 
-            long currentCoverage = result.select(input_file_name()).distinct().count();
+            List<String> curFiles = result.select(input_file_name()).distinct().as(Encoders.STRING()).collectAsList();
+            long currentCoverage = curFiles.size();
             System.out.println("i=" + i + ", coverage = " + currentCoverage);
 
-            list.add(currentCoverage);
+            listCoverage.add(currentCoverage);
+
+            if (curFiles.size() <= 10000) {
+                cache.add(new ConditionValues(extendedPriceFrom, extendedPriceTo, shipDateFrom,
+                        shipDateFrom, discountFrom, discountTo, quantityFrom, quantityTo, curFiles));
+            }
+
+            long endTime = System.currentTimeMillis();
+            listTimes.add((endTime-startTime)/1000);
+            cachedUsed.add(cachedFiles == null ? null : cachedFiles.size());
         }
 
-        System.out.println(list);
+        System.out.println(listCoverage);
+        System.out.println(listTimes);
+        System.out.println(cachedUsed);
+
+        System.out.println("total time : " + listTimes.stream().mapToLong(Long::longValue).sum());
     }
 
     private static Column getQueryCondition(int priceFrom, int priceTo,
@@ -67,5 +100,49 @@ public class Benchmark {
                 .and(col("l_quantity").geq(quantityFrom)).and(col("l_quantity").leq(quantityTo));
     }
 
+    static class ConditionValues{
+        int priceFrom;
+        int priceTo;
+        String shipDateFrom;
+        String shipDateTo;
+        double discountFrom;
+        double discountTo;
+        int quantityFrom;
+        int quantityTo;
+        List<String> files;
+
+        public ConditionValues(int priceFrom, int priceTo, String shipDateFrom, String shipDateTo,
+                               double discountFrom, double discountTo, int quantityFrom, int quantityTo, List<String> files) {
+            this.priceFrom = priceFrom;
+            this.priceTo = priceTo;
+            this.shipDateFrom = shipDateFrom;
+            this.shipDateTo = shipDateTo;
+            this.discountFrom = discountFrom;
+            this.discountTo = discountTo;
+            this.quantityFrom = quantityFrom;
+            this.quantityTo = quantityTo;
+            this.files = files;
+        }
+    }
+
+    static List<String> getFilesFromCache(List<ConditionValues> cache, ConditionValues currentValues){
+
+        List<String> result = null;
+        for (ConditionValues cond : cache){
+            if (currentValues.priceFrom >= cond.priceFrom && currentValues.priceTo <= cond.priceTo &&
+                currentValues.discountFrom >= cond.discountFrom && currentValues.discountTo <= cond.discountTo &&
+                currentValues.shipDateFrom.compareTo(cond.shipDateFrom) >= 0 && currentValues.shipDateTo.compareTo(cond.shipDateTo) <= 0 &&
+                currentValues.quantityFrom >= cond.quantityFrom && currentValues.quantityTo <= cond.quantityTo
+            ){
+                System.out.println("found something in cache !!!");
+                if (result == null || result.size() > cond.files.size()) {
+                    result = cond.files;
+                    System.out.println("using it !!!!");
+                }
+            }
+        }
+
+        return result;
+    }
 
 }
