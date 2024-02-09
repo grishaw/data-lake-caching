@@ -18,6 +18,7 @@ public class Benchmark {
     public void myBenchmark(){
         SparkSession sparkSession = TestUtils.initTestSparkSession("myBenchmark");
 
+        sparkSession.sparkContext().setLogLevel("ERROR");
         LinkedList <Long> listCoverage = new LinkedList<>();
         LinkedList <Long> listTimes = new LinkedList<>();
         LinkedList <ConditionValues> cache = new LinkedList<>();
@@ -27,30 +28,21 @@ public class Benchmark {
 
             long startTime = System.currentTimeMillis();
 
-            int p1 = ThreadLocalRandom.current().nextInt(1000, 100000);
-            int p2 = ThreadLocalRandom.current().nextInt(1000, 100000);
-            int extendedPriceFrom = Math.min(p1, p2);
-            int extendedPriceTo = Math.max(p1, p2) + 100;
+            int extendedPriceFrom = 901;
+            int extendedPriceTo = 104950;
 
-            int q1 = ThreadLocalRandom.current().nextInt(1, 50);
-            int q2 = ThreadLocalRandom.current().nextInt(1, 50);
-            int quantityFrom = Math.min(q1, q2);
-            int quantityTo = Math.max(q1, q2)+1;
+            int quantityFrom = 1;
+            int quantityTo = ThreadLocalRandom.current().nextInt(2,3);
 
-            long minDay = LocalDate.of(1992, 1, 1).toEpochDay();
-            long maxDay = LocalDate.of(1998, 1, 1).toEpochDay();
-            LocalDate randomDate1 = LocalDate.ofEpochDay( ThreadLocalRandom.current().nextLong(minDay, maxDay));
-            LocalDate randomDate2 = LocalDate.ofEpochDay( ThreadLocalRandom.current().nextLong(minDay, maxDay));
-            String shipDateFrom = randomDate1.toEpochDay() <= randomDate2.toEpochDay() ? randomDate1.toString() : randomDate2.toString();
-            String shipDateTo = randomDate1.toEpochDay() > randomDate2.toEpochDay() ? randomDate1.toString() : randomDate2.toString();
+            int year = ThreadLocalRandom.current().nextInt(1993,1998);
+            String shipDateFrom = LocalDate.of(year, 1, 1).toString();
+            String shipDateTo = LocalDate.of(year+1, 1, 1).toString();
 
-            double d1 = ThreadLocalRandom.current().nextDouble(0.0, 0.1);
-            double d2 = ThreadLocalRandom.current().nextDouble(0.0, 0.1);
-            double discountFrom = Math.min(d1, d2);
-            double discountTo = Math.max(d1, d2) + 0.01;
+            double discountFrom = 0.00;
+            double discountTo = ThreadLocalRandom.current().nextDouble(0.00, 0.01);
 
             ConditionValues cur = new ConditionValues(extendedPriceFrom, extendedPriceTo, shipDateFrom,
-                    shipDateFrom, discountFrom, discountTo, quantityFrom, quantityTo, null);
+                    shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo, null);
 
             List<String> cachedFiles = getFilesFromCache(cache, cur);
 
@@ -58,8 +50,13 @@ public class Benchmark {
             if (cachedFiles == null) {
                 lineItem = sparkSession.read().parquet("src/test/resources/tpch/lineitem-10k/");
             }else{
-                System.out.println("using cache in read !!!!");
-                System.out.println("cached files size = " + cachedFiles.size());
+                if (cachedFiles.isEmpty()){
+                    System.out.println("cached coverage is empty !!!!!!!");
+                    listCoverage.add(null);
+                    listTimes.add((System.currentTimeMillis()-startTime)/1000);
+                    cachedUsed.add(-1);
+                    continue;
+                }
                 lineItem = sparkSession.read().parquet(cachedFiles.toArray(new String[0]));
             }
 
@@ -73,9 +70,9 @@ public class Benchmark {
 
             listCoverage.add(currentCoverage);
 
-            if (curFiles.size() <= 10000) {
+            if (curFiles.size() <= 5000 && (cachedFiles == null || cachedFiles.size() != curFiles.size())) {
                 cache.add(new ConditionValues(extendedPriceFrom, extendedPriceTo, shipDateFrom,
-                        shipDateFrom, discountFrom, discountTo, quantityFrom, quantityTo, curFiles));
+                        shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo, curFiles));
             }
 
             long endTime = System.currentTimeMillis();
@@ -128,20 +125,21 @@ public class Benchmark {
     static List<String> getFilesFromCache(List<ConditionValues> cache, ConditionValues currentValues){
 
         List<String> result = null;
+
         for (ConditionValues cond : cache){
             if (currentValues.priceFrom >= cond.priceFrom && currentValues.priceTo <= cond.priceTo &&
                 currentValues.discountFrom >= cond.discountFrom && currentValues.discountTo <= cond.discountTo &&
                 currentValues.shipDateFrom.compareTo(cond.shipDateFrom) >= 0 && currentValues.shipDateTo.compareTo(cond.shipDateTo) <= 0 &&
                 currentValues.quantityFrom >= cond.quantityFrom && currentValues.quantityTo <= cond.quantityTo
+                    && (result == null || result.size() > cond.files.size())
             ){
-                System.out.println("found something in cache !!!");
-                if (result == null || result.size() > cond.files.size()) {
                     result = cond.files;
-                    System.out.println("using it !!!!");
-                }
             }
         }
 
+        if (result != null){
+            System.out.println("using cache coverage of size: " + result.size());
+        }
         return result;
     }
 
