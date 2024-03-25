@@ -11,11 +11,11 @@ public class TestUtils {
 
         SparkConf sparkConf = new SparkConf()
                 .setAppName(appName)
-                .setMaster("local[*, 2]")
+                .setMaster("local[4]")
                 .set("spark.driver.host", "localhost")
-                .set("spark.sql.shuffle.partitions", "5")
-                .set("spark.default.parallelism", "5")
-                .set("spark.sql.autoBroadcastJoinThreshold", "-1")
+                //.set("spark.sql.shuffle.partitions", "5")
+                //.set("spark.default.parallelism", "5")
+                //.set("spark.sql.autoBroadcastJoinThreshold", "-1")
                 ;
 
         return SparkSession.builder()
