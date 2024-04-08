@@ -1,8 +1,9 @@
+package benchmark;
+
 import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.SparkSession;
-import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.util.LinkedList;
@@ -10,35 +11,38 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.apache.spark.sql.functions.*;
+import static org.apache.spark.sql.functions.col;
 
 public class Benchmark {
 
-    @Test
-    public void myBenchmark(){
+    public static void main(String[] args) {
+        SparkSession sparkSession = SparkSession.builder().appName("benchmark").getOrCreate();
 
-        int benchmarksNum = 3;
-        int iterationsNum = 5;
-        int coverageUpperThreshold = 5000;
+        String datalakePath = args[0];
+
+        int iterationsNum = Integer.parseInt(args[1]);
+        int coverageUpperThreshold = Integer.parseInt(args[2]);
+        int benchmarksNum = Integer.parseInt(args[3]);
+        int quantityToMax = Integer.parseInt(args[4]);
+        double discountToMax = Double.parseDouble(args[5]);
 
         long cacheTotal = 0;
         long nonCacheTotal = 0;
 
         for (int i=1; i<=benchmarksNum; i++) {
             System.out.println("benchmark " + i + " with cache");
-            cacheTotal += benchmark(true, iterationsNum, coverageUpperThreshold);
+            cacheTotal += benchmark(sparkSession, datalakePath, true, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
             System.out.println("benchmark " + i + " without cache");
-            nonCacheTotal += benchmark(false, iterationsNum, coverageUpperThreshold);
+            nonCacheTotal += benchmark(sparkSession, datalakePath, false, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
         }
 
         System.out.println("Bottom line: cache = " + cacheTotal / benchmarksNum + ", non-cache = " + nonCacheTotal / benchmarksNum);
     }
 
-    static long benchmark(boolean withCache, int iterationsNum, int coverageUpperThreshold){
+    static long benchmark(SparkSession sparkSession, String datalakePath, boolean withCache, int iterationsNum, int coverageUpperThreshold,
+                          int quantityToMax, double discountToMax){
 
-        SparkSession sparkSession = TestUtils.initTestSparkSession("myBenchmark");
-        sparkSession.sparkContext().setLogLevel("ERROR");
-
-        LinkedList <Long> queryCoverageSizes = new LinkedList<>();
+        LinkedList<Long> queryCoverageSizes = new LinkedList<>();
         LinkedList <Long> queryTimes = new LinkedList<>();
         LinkedList <Integer> usedCachedCoverageSizes = new LinkedList<>();
 
@@ -51,14 +55,14 @@ public class Benchmark {
             long startTime = System.currentTimeMillis();
 
             int quantityFrom = 1;
-            int quantityTo = ThreadLocalRandom.current().nextInt(1,2);
+            int quantityTo = ThreadLocalRandom.current().nextInt(1,quantityToMax);
 
             int year = ThreadLocalRandom.current().nextInt(1993,1998);
             String shipDateFrom = LocalDate.of(year, 1, 1).toString();
             String shipDateTo = LocalDate.of(year + 1, 1, 1).toString();
 
             double discountFrom = 0.00;
-            double discountTo = ThreadLocalRandom.current().nextDouble(0.00, 0.02);
+            double discountTo = ThreadLocalRandom.current().nextDouble(0.00, discountToMax);
 
             ConditionValues cur = new ConditionValues(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo, null);
 
@@ -66,7 +70,7 @@ public class Benchmark {
 
             Dataset lineItem;
             if (cachedFiles == null) {
-                lineItem = sparkSession.read().parquet("src/test/resources/tpch/lineitem-10k/");
+                lineItem = sparkSession.read().parquet(datalakePath);
             }else{
                 cacheHits++;
                 if (cachedFiles.isEmpty()){
@@ -115,8 +119,8 @@ public class Benchmark {
                                             int quantityFrom, int quantityTo){
         return
                 col("l_shipdate").geq(shipDateFrom).and(col("l_shipdate").leq(shipDateTo))
-                .and(col("l_discount").geq(discountFrom)).and(col("l_discount").leq(discountTo))
-                .and(col("l_quantity").geq(quantityFrom)).and(col("l_quantity").leq(quantityTo));
+                        .and(col("l_discount").geq(discountFrom)).and(col("l_discount").leq(discountTo))
+                        .and(col("l_quantity").geq(quantityFrom)).and(col("l_quantity").leq(quantityTo));
     }
 
     static class ConditionValues{
@@ -151,11 +155,12 @@ public class Benchmark {
 
         for (ConditionValues cached : cache){
             if (cached.contains(current) && (result == null || result.size() > cached.files.size())){
-                    result = cached.files;
+                result = cached.files;
             }
         }
 
         return result;
     }
+
 
 }

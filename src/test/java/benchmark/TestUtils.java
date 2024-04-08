@@ -1,3 +1,5 @@
+package benchmark;
+
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -12,11 +14,7 @@ public class TestUtils {
         SparkConf sparkConf = new SparkConf()
                 .setAppName(appName)
                 .setMaster("local[4]")
-                .set("spark.driver.host", "localhost")
-                //.set("spark.sql.shuffle.partitions", "5")
-                //.set("spark.default.parallelism", "5")
-                //.set("spark.sql.autoBroadcastJoinThreshold", "-1")
-                ;
+                .set("spark.driver.host", "localhost");
 
         return SparkSession.builder()
                 .config(sparkConf)
