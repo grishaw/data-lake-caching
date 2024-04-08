@@ -26,6 +26,12 @@ public class Benchmark {
         int quantityToMax = Integer.parseInt(args[4]);
         double discountToMax = Double.parseDouble(args[5]);
 
+        System.out.println("iterations = " + iterationsNum);
+        System.out.println("coverageUpperThreshold = " + coverageUpperThreshold);
+        System.out.println("benchmarksNum = " + benchmarksNum);
+        System.out.println("quantityToMax = " + quantityToMax);
+        System.out.println("discountToMax = " + discountToMax);
+
         long cacheTotal = 0;
         long nonCacheTotal = 0;
 
@@ -49,6 +55,9 @@ public class Benchmark {
         LinkedList <ConditionValues> cache = new LinkedList<>();
 
         int cacheHits = 0;
+
+        // warm up
+        sparkSession.read().parquet(datalakePath).show();
 
         for (int i=0; i<iterationsNum; i++){
 
