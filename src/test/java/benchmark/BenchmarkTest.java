@@ -4,7 +4,7 @@ import jdk.nashorn.internal.ir.annotations.Ignore;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.Test;
 
-import static benchmark.Benchmark.benchmark;
+import static benchmark.Benchmark.runFullBenchmark;
 
 public class BenchmarkTest {
 
@@ -19,22 +19,12 @@ public class BenchmarkTest {
         int iterationsNum = 10;
         int coverageUpperThreshold = 5000;
 
-        long cacheTotal = 0;
-        long nonCacheTotal = 0;
-
-        int quantityToMax = 2;
-        double discountToMax = 0.02;
+        int quantityToMax = 3;
+        double discountToMax = 0.03;
 
         String datalakePath = "src/test/resources/tpch/lineitem-10k/";
 
-        for (int i=1; i<=benchmarksNum; i++) {
-            System.out.println("benchmark " + i + " with cache");
-            cacheTotal += benchmark(sparkSession, datalakePath, true, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
-            System.out.println("benchmark " + i + " without cache");
-            nonCacheTotal += benchmark(sparkSession, datalakePath, false, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
-        }
-
-        System.out.println("Bottom line: cache = " + cacheTotal / benchmarksNum + ", non-cache = " + nonCacheTotal / benchmarksNum);
+        runFullBenchmark(benchmarksNum, sparkSession, datalakePath, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
     }
 
 }

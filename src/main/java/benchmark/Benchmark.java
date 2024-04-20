@@ -6,6 +6,7 @@ import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.SparkSession;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -32,20 +33,27 @@ public class Benchmark {
         System.out.println("quantityToMax = " + quantityToMax);
         System.out.println("discountToMax = " + discountToMax);
 
-        long cacheTotal = 0;
-        long nonCacheTotal = 0;
-
-        for (int i=1; i<=benchmarksNum; i++) {
-            System.out.println("benchmark " + i + " with cache");
-            cacheTotal += benchmark(sparkSession, datalakePath, true, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
-            System.out.println("benchmark " + i + " without cache");
-            nonCacheTotal += benchmark(sparkSession, datalakePath, false, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
-        }
-
-        System.out.println("Bottom line: cache = " + cacheTotal / benchmarksNum + ", non-cache = " + nonCacheTotal / benchmarksNum);
+        runFullBenchmark(benchmarksNum, sparkSession, datalakePath, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
     }
 
-    static long benchmark(SparkSession sparkSession, String datalakePath, boolean withCache, int iterationsNum, int coverageUpperThreshold,
+    static void runFullBenchmark(int benchmarksNum, SparkSession sparkSession, String datalakePath, int iterationsNum, int coverageUpperThreshold, int quantityToMax, double discountToMax){
+        long cacheTotal = 0;
+        long nonCacheTotal = 0;
+        long naiveCacheTotal = 0;
+
+        for (int i=1; i<=benchmarksNum; i++) {
+            System.out.println("benchmark " + i + " with coverage cache");
+            cacheTotal += benchmark(sparkSession, datalakePath, Benchmark.CacheMode.COVERAGE_CACHE, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
+            System.out.println("benchmark " + i + " without cache");
+            nonCacheTotal += benchmark(sparkSession, datalakePath, Benchmark.CacheMode.NO_CACHE, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
+            System.out.println("benchmark " + i + " with naive cache");
+            naiveCacheTotal += benchmark(sparkSession, datalakePath, Benchmark.CacheMode.NAIVE_CACHE, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
+        }
+
+        System.out.println("Bottom line: cache = " + cacheTotal / benchmarksNum + ", non-cache = " + nonCacheTotal / benchmarksNum + ", naive-cache = " + naiveCacheTotal / benchmarksNum);
+    }
+
+    static long benchmark(SparkSession sparkSession, String datalakePath, CacheMode cacheMode, int iterationsNum, int coverageUpperThreshold,
                           int quantityToMax, double discountToMax){
 
         LinkedList<Long> queryCoverageSizes = new LinkedList<>();
@@ -75,24 +83,48 @@ public class Benchmark {
 
             ConditionValues cur = new ConditionValues(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo, null);
 
-            List<String> cachedFiles = withCache ? getFilesFromCache(cache, cur) : null;
-
             Dataset lineItem;
-            if (cachedFiles == null) {
+            Dataset result;
+            List<String> cachedFiles = null;
+            Double resultValue = null;
+            if (cacheMode == CacheMode.NO_CACHE){
                 lineItem = sparkSession.read().parquet(datalakePath);
-            }else{
-                cacheHits++;
-                if (cachedFiles.isEmpty()){
-                    queryCoverageSizes.add(0L);
-                    queryTimes.add((System.currentTimeMillis()-startTime)/1000);
-                    usedCachedCoverageSizes.add(0);
-                    continue;
+                result = lineItem.where(getQueryCondition(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo));
+                resultValue = (double) result.agg(sum(col("l_extendedprice").multiply(col("l_discount")))).as(Encoders.DOUBLE()).collectAsList().get(0);
+                System.out.println("no-cache result = " + resultValue);
+            }else if (cacheMode == CacheMode.NAIVE_CACHE){
+                lineItem = sparkSession.read().parquet(datalakePath);
+                result = lineItem.where(getQueryCondition(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo));
+                String cachedResult = getResultFromCache(cache, cur);
+                if (cachedResult != null){
+                    cacheHits++;
+                    System.out.println("naively cached result = " + cachedResult);
+                }else{
+                    resultValue = (double) result.agg(sum(col("l_extendedprice").multiply(col("l_discount")))).as(Encoders.DOUBLE()).collectAsList().get(0);
+                    System.out.println("naively non-cached result = " + resultValue);
                 }
-                lineItem = sparkSession.read().parquet(cachedFiles.toArray(new String[0]));
+            }else if (cacheMode == CacheMode.COVERAGE_CACHE){
+                cachedFiles = getFilesFromCache(cache, cur);
+                if (cachedFiles != null) {
+                    cacheHits++;
+                    if (cachedFiles.isEmpty()) {
+                        queryCoverageSizes.add(0L);
+                        queryTimes.add((System.currentTimeMillis() - startTime) / 1000);
+                        usedCachedCoverageSizes.add(0);
+                        continue;
+                    }
+                    lineItem = sparkSession.read().parquet(cachedFiles.toArray(new String[0]));
+                }else{
+                    lineItem = sparkSession.read().parquet(datalakePath);
+                }
+                result = lineItem.where(getQueryCondition(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo));
+                resultValue = (double) result.agg(sum(col("l_extendedprice").multiply(col("l_discount")))).as(Encoders.DOUBLE()).collectAsList().get(0);
+                System.out.println("covered cached result = " + resultValue);
+
+            }else{
+                throw new IllegalArgumentException("Invalid cache mode");
             }
 
-            Dataset result = lineItem.where(getQueryCondition(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo));
-            result.agg(sum(col("l_extendedprice").multiply(col("l_discount")))).show();
 
             long endTime = System.currentTimeMillis();
             queryTimes.add((endTime-startTime)/1000);
@@ -100,10 +132,14 @@ public class Benchmark {
             List<String> curFiles = result.select(input_file_name()).distinct().as(Encoders.STRING()).collectAsList();
             long currentCoverageSize = curFiles.size();
             queryCoverageSizes.add(currentCoverageSize);
+            System.out.println("coverage-size=" + currentCoverageSize);
 
-            if (currentCoverageSize <= coverageUpperThreshold && withCache && (cachedFiles == null || cachedFiles.size() != currentCoverageSize)) {
+            if (currentCoverageSize <= coverageUpperThreshold && cacheMode == CacheMode.COVERAGE_CACHE && (cachedFiles == null || cachedFiles.size() != currentCoverageSize)) {
                 //TODO don't add duplicate values
                 cache.add(new ConditionValues(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo, curFiles));
+            }else if (cacheMode == CacheMode.NAIVE_CACHE){
+                cache.add(new ConditionValues(shipDateFrom, shipDateTo, discountFrom, discountTo, quantityFrom, quantityTo,
+                        Arrays.asList(resultValue == null ? null : String.valueOf(resultValue))));
             }
 
             usedCachedCoverageSizes.add(cachedFiles == null ? null : cachedFiles.size());
@@ -156,6 +192,36 @@ public class Benchmark {
                     other.shipDateFrom.compareTo(this.shipDateFrom) >= 0 && other.shipDateTo.compareTo(this.shipDateTo) <= 0 &&
                     other.quantityFrom >= this.quantityFrom && other.quantityTo <= this.quantityTo;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            ConditionValues that = (ConditionValues) o;
+
+            if (Double.compare(discountFrom, that.discountFrom) != 0) return false;
+            if (Double.compare(discountTo, that.discountTo) != 0) return false;
+            if (quantityFrom != that.quantityFrom) return false;
+            if (quantityTo != that.quantityTo) return false;
+            if (!shipDateFrom.equals(that.shipDateFrom)) return false;
+            return shipDateTo.equals(that.shipDateTo);
+        }
+
+        @Override
+        public int hashCode() {
+            int result;
+            long temp;
+            result = shipDateFrom.hashCode();
+            result = 31 * result + shipDateTo.hashCode();
+            temp = Double.doubleToLongBits(discountFrom);
+            result = 31 * result + (int) (temp ^ (temp >>> 32));
+            temp = Double.doubleToLongBits(discountTo);
+            result = 31 * result + (int) (temp ^ (temp >>> 32));
+            result = 31 * result + quantityFrom;
+            result = 31 * result + quantityTo;
+            return result;
+        }
     }
 
     static List<String> getFilesFromCache(List<ConditionValues> cache, ConditionValues current){
@@ -171,5 +237,21 @@ public class Benchmark {
         return result;
     }
 
+    static String getResultFromCache(List<ConditionValues> cache, ConditionValues current){
+
+        for (ConditionValues cached : cache){
+            if (cached.equals(current)){
+                return cached.files.get(0);
+            }
+        }
+
+        return null;
+    }
+
+    enum CacheMode{
+        NO_CACHE,
+        NAIVE_CACHE,
+        COVERAGE_CACHE
+    }
 
 }
