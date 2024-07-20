@@ -8,7 +8,6 @@ import static benchmark.Benchmark.runFullBenchmark;
 
 public class BenchmarkTest {
 
-    @Test
     @Ignore
     public void myBenchmark(){
 
