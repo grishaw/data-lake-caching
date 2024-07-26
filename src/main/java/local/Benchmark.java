@@ -9,24 +9,24 @@ public class Benchmark {
 
 
     public static void main(String[] args) {
-        runBenchmark(10, 1_000_000, 100_000, 200, 2);
+        runBenchmark(10, 1_000_000, 100_000, 1000, 3);
     }
 
     static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int numOfIterations){
 
         //TODO
-        // - verify we get the same result for cache and no-cache (use records number)
         // - organize the flow to be simple and readable
-        // - add relevant classes - for table, interval, record, cache
-        // - do not use static cache, init per test, also add cache statistics to the data structure (cache hits)
+        // - add relevant classes - for table, interval, record (don't use apache pair)
         // - rename benchmark package to "cloud"
         // - try different params
         // - add cache data structure type (basic/enhanced/spatial type) and cache replacement type (unlimited, policy type)
-        // - change ibm mail
         // - add missing tests / refactor existing
+        // - add ReadMe, squash commits
+        // - consider hashmap for cache instead of list (to avoid duplicate intervals)
 
         ArrayList<List<Long>> listNoCacheTimes = new ArrayList<>(numOfIterations);
         ArrayList<List<Long>> listWithCacheTimes = new ArrayList<>(numOfIterations);
+        ArrayList<List<Integer>> cacheHits = new ArrayList<>(numOfIterations);
 
         for (int j=0; j<numOfIterations; j++) {
 
@@ -60,10 +60,7 @@ public class Benchmark {
                 System.gc();
             }
 
-            System.out.println(j + ", hits = " + cache.hits);
-            System.out.println(j + ", hits num = " + cache.hits.size());
-            System.out.println(j + ", hits coverage average = " + cache.hits.stream().mapToLong(v -> v).average());
-            System.out.println("--------------------------");
+            cacheHits.add(cache.hits);
         }
 
         // ------------------------------------------------
@@ -73,11 +70,16 @@ public class Benchmark {
         for (int i=0; i<numOfIterations; i++) {
             System.out.println(i + ", no cache : " + listNoCacheTimes.get(i).stream().mapToLong(v -> v).average().getAsDouble());
             System.out.println(i + ", with cache : " + listWithCacheTimes.get(i).stream().mapToLong(v -> v).average().getAsDouble());
+            System.out.println(i + ", hits = " + cacheHits.get(i));
+            System.out.println(i + ", hits num = " + cacheHits.get(i).size());
+            System.out.println(i + ", hits coverage average = " + cacheHits.get(i).stream().mapToInt(v -> v).average());
         }
 
         System.out.println("--------------------------");
         System.out.println("total no cache : " + listNoCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
         System.out.println("total with cache : " + listWithCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
+        System.out.println("total cache hits num : " + cacheHits.stream().flatMap(l -> l.stream()).count());
+        System.out.println("total cache hits coverage average : " + cacheHits.stream().flatMap(l -> l.stream()).mapToInt(v -> v).average().getAsDouble());
     }
 
     static HashMap<Integer, List<ArrayList<Integer>>> createRandomTable(int numOfColumns, int numOfRecords, int numOfFiles){
@@ -136,6 +138,7 @@ public class Benchmark {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
                         coverage.add(entry.getKey());
+                        System.out.println("with cache-no-hit, found record number : " + resultCount);
                     }
                 }
             }
@@ -145,12 +148,13 @@ public class Benchmark {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
                         coverage.add(fileNum);
+                        System.out.println("with cache-hit, found record number : " + resultCount);
                     }
                 }
             }
         }
 
-        if (coverage.size() < cache.maxCoverage){
+        if (coverage.size() < cache.maxCoverage && (minCoverage == null || minCoverage.size() > coverage.size())){
             cache.put(interval, coverage);
         }
 
@@ -165,6 +169,7 @@ public class Benchmark {
             for (ArrayList<Integer> record : entry.getValue()) {
                 if (Benchmark.intervalContainsRecord(interval, record)) {
                     resultCount++;
+                    System.out.println("no cache, found record number : " + resultCount);
                 }
             }
         }
@@ -199,20 +204,6 @@ public class Benchmark {
         }
 
         return true;
-
-    }
-
-    // null means not found, empty set means empty set coverage
-    static Set<Integer> getMinCoverage(List<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache, ArrayList<Pair<Integer, Integer>> queryInterval){
-
-        Set<Integer> result = null;
-        for (Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>> entry : cache){
-            if (intervalContainsInterval(entry.getLeft(), queryInterval) && (result == null || result.size() > entry.getRight().size())){
-                result = entry.getRight();
-            }
-        }
-
-        return result;
 
     }
 
