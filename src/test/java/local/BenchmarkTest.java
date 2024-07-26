@@ -36,7 +36,7 @@ public class BenchmarkTest {
     }
 
     @Test
-    public void runRandomQueryTest(){
+    public void runQueryWithNoCacheTest(){
 
         final int NUM_OF_FILES = 10000;
         final int NUM_OF_COLUMNS = 10;
@@ -44,7 +44,9 @@ public class BenchmarkTest {
 
         HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(NUM_OF_COLUMNS, NUM_OF_RECORDS, NUM_OF_FILES);
 
-        Integer result = runRandomQuery(table, false);
+        ArrayList<Pair<Integer, Integer>> interval = generateInterval(NUM_OF_COLUMNS, 0.5);
+
+        Integer result = runQueryWithNoCache(table, interval);
 
         System.out.println(result);
 
@@ -107,7 +109,7 @@ public class BenchmarkTest {
     @Test
     public void getMinCoverageTest(){
 
-        List<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache = new LinkedList<>();
+        Cache cache = new Cache(100);
 
         ArrayList<Pair<Integer, Integer>> interval1
                 = new ArrayList<>(Arrays.asList(Pair.of(0,10), Pair.of(20,1000), Pair.of(-10, -5)));
@@ -123,9 +125,9 @@ public class BenchmarkTest {
 
         Set<Integer> coverage2 = new HashSet<>(Arrays.asList(10,20,30,40));
 
-        cache.add(Pair.of(interval1, coverage1));
-        cache.add(Pair.of(interval2, coverage2));
-        cache.add(Pair.of(interval3, new HashSet<>()));
+        cache.put(interval1, coverage1);
+        cache.put(interval2, coverage2);
+        cache.put(interval3, new HashSet<>());
 
 
         ArrayList<Pair<Integer, Integer>> myInterval1
@@ -140,13 +142,13 @@ public class BenchmarkTest {
         ArrayList<Pair<Integer, Integer>> myInterval4
                 = new ArrayList<>(Arrays.asList(Pair.of(0,0), Pair.of(2,3), Pair.of(-8, -6)));
 
-        Assertions.assertNull(getMinCoverage(cache, myInterval1));
+        Assertions.assertNull(cache.getMinCoverage(myInterval1));
 
-        Assertions.assertEquals(3, getMinCoverage(cache, myInterval2).size());
+        Assertions.assertEquals(3, cache.getMinCoverage(myInterval2).size());
 
-        Assertions.assertEquals(4, getMinCoverage(cache, myInterval3).size());
+        Assertions.assertEquals(4, cache.getMinCoverage(myInterval3).size());
 
-        Assertions.assertEquals(0, getMinCoverage(cache, myInterval4).size());
+        Assertions.assertEquals(0, cache.getMinCoverage(myInterval4).size());
 
     }
 }

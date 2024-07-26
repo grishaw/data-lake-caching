@@ -8,10 +8,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class Benchmark {
 
 
-    static List<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache;
-
     public static void main(String[] args) {
-        runBenchmark(10, 1_000_000, 100_000, 1000, 3);
+        runBenchmark(10, 1_000_000, 100_000, 200, 2);
     }
 
     static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int numOfIterations){
@@ -20,44 +18,66 @@ public class Benchmark {
         // - verify we get the same result for cache and no-cache (use records number)
         // - organize the flow to be simple and readable
         // - add relevant classes - for table, interval, record, cache
-        // - do not use static cache, init per test
+        // - do not use static cache, init per test, also add cache statistics to the data structure (cache hits)
         // - rename benchmark package to "cloud"
         // - try different params
         // - add cache data structure type (basic/enhanced/spatial type) and cache replacement type (unlimited, policy type)
+        // - change ibm mail
+        // - add missing tests / refactor existing
 
-        List<Pair<Long, Long>> resultsTimes = new LinkedList<>();
-        List<Integer> resultsCoverageWithCache = new LinkedList<>();
+        ArrayList<List<Long>> listNoCacheTimes = new ArrayList<>(numOfIterations);
+        ArrayList<List<Long>> listWithCacheTimes = new ArrayList<>(numOfIterations);
 
         for (int j=0; j<numOfIterations; j++) {
 
+            listNoCacheTimes.add(new LinkedList<>());
+            listWithCacheTimes.add(new LinkedList<>());
+
             HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
-            cache = new LinkedList<>();
+            Cache cache = new Cache((int) Math.round(numOfFiles * 0.7));
 
-            long start = System.currentTimeMillis();
+            int resultNoCache;
+            int resultWithCache;
             for (int i = 0; i < numOfQueries; i++) {
-                runRandomQuery(table, false);
+
+                ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
+
+                long startNoCache = System.currentTimeMillis();
+                resultNoCache = runQueryWithNoCache(table, interval);
+                long endNoCache = System.currentTimeMillis();
+
+                long startWithCache = System.currentTimeMillis();
+                resultWithCache = runQueryWithCache(table, interval, cache);
+                long endWithCache = System.currentTimeMillis();
+
+                if (resultNoCache != resultWithCache){
+                    throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache);
+                }
+
+                listNoCacheTimes.get(j).add(endNoCache - startNoCache);
+                listWithCacheTimes.get(j).add(endWithCache - startWithCache);
+
+                System.gc();
             }
-            long end = System.currentTimeMillis();
 
-            long start2 = System.currentTimeMillis();
-            for (int i = 0; i < numOfQueries; i++) {
-                resultsCoverageWithCache.add(runRandomQuery(table, true));
-            }
-            long end2 = System.currentTimeMillis();
-
-            System.out.println("iteration " + j + " : without cache = " + (end - start) + ", with cache = " + (end2 - start2));
-
-            resultsTimes.add(Pair.of((end - start),(end2 - start2)));
+            System.out.println(j + ", hits = " + cache.hits);
+            System.out.println(j + ", hits num = " + cache.hits.size());
+            System.out.println(j + ", hits coverage average = " + cache.hits.stream().mapToLong(v -> v).average());
+            System.out.println("--------------------------");
         }
 
-        System.out.println(resultsTimes);
-        System.out.println(resultsCoverageWithCache);
+        // ------------------------------------------------
 
         System.out.println("--------------------------");
-        System.out.println("without cache : " + resultsTimes.stream().mapToLong(p -> p.getLeft()).average());
-        System.out.println("with cache : " + resultsTimes.stream().mapToLong(p -> p.getRight()).average());
-        System.out.println("cache hits : " + (resultsCoverageWithCache.stream().filter(r -> r != null).count() / numOfIterations));
 
+        for (int i=0; i<numOfIterations; i++) {
+            System.out.println(i + ", no cache : " + listNoCacheTimes.get(i).stream().mapToLong(v -> v).average().getAsDouble());
+            System.out.println(i + ", with cache : " + listWithCacheTimes.get(i).stream().mapToLong(v -> v).average().getAsDouble());
+        }
+
+        System.out.println("--------------------------");
+        System.out.println("total no cache : " + listNoCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
+        System.out.println("total with cache : " + listWithCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
     }
 
     static HashMap<Integer, List<ArrayList<Integer>>> createRandomTable(int numOfColumns, int numOfRecords, int numOfFiles){
@@ -105,48 +125,51 @@ public class Benchmark {
         return result;
     }
 
-    static Integer runRandomQuery(HashMap<Integer, List<ArrayList<Integer>>> table, boolean useCache){
-        int numOfColumns = table.values().stream().findFirst().get().get(0).size();
-        int numOfFiles = table.keySet().size();
-        double percentageOfNonEmptyTerms = ThreadLocalRandom.current().nextDouble();
-
-        ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, percentageOfNonEmptyTerms);
-
+    static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, Cache cache){
         Set<Integer> coverage = new HashSet<>();
-        Set<Integer> minCoverage = null;
+        Set<Integer> minCoverage = cache.getMinCoverage(interval);
 
-        if (useCache){
-            minCoverage = getMinCoverage(cache, interval);
-        }
-
+        int resultCount = 0;
         if (minCoverage == null) {
-
             for (Map.Entry<Integer, List<ArrayList<Integer>>> entry : table.entrySet()) {
                 for (ArrayList<Integer> record : entry.getValue()) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
-                        if (useCache) {
-                            coverage.add(entry.getKey());
-                        }
+                        resultCount++;
+                        coverage.add(entry.getKey());
                     }
                 }
             }
-
         }else{
             for (int fileNum : minCoverage){
                 for (ArrayList<Integer> record : table.get(fileNum)) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
+                        resultCount++;
                         coverage.add(fileNum);
                     }
                 }
             }
         }
 
-        if (useCache && coverage.size() < numOfFiles * 0.7){
-            cache.add(Pair.of(interval, coverage));
+        if (coverage.size() < cache.maxCoverage){
+            cache.put(interval, coverage);
         }
 
-        return minCoverage == null ? null : minCoverage.size();
+        return resultCount;
+    }
 
+    static int runQueryWithNoCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval){
+
+        int resultCount = 0;
+
+        for (Map.Entry<Integer, List<ArrayList<Integer>>> entry : table.entrySet()) {
+            for (ArrayList<Integer> record : entry.getValue()) {
+                if (Benchmark.intervalContainsRecord(interval, record)) {
+                    resultCount++;
+                }
+            }
+        }
+
+        return resultCount;
     }
 
     static boolean intervalContainsRecord(ArrayList<Pair<Integer, Integer>> interval, ArrayList<Integer> record){
@@ -193,4 +216,38 @@ public class Benchmark {
 
     }
 
+    static class Cache {
+        List<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache;
+        List<Integer> hits;
+
+        int maxCoverage;
+
+        public Cache(int maxCoverage){
+            this.maxCoverage = maxCoverage;
+            cache = new LinkedList<>();
+            hits = new LinkedList<>();
+        }
+
+        Set<Integer> getMinCoverage (ArrayList<Pair<Integer, Integer>> queryInterval){
+            Set<Integer> result = null;
+            for (Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>> entry : cache){
+                if (intervalContainsInterval(entry.getLeft(), queryInterval) && (result == null || result.size() > entry.getRight().size())){
+                    result = entry.getRight();
+                }
+            }
+
+            if (result != null){
+                hits.add(result.size());
+            }
+
+            return result;
+        }
+
+        void put(ArrayList<Pair<Integer, Integer>> interval, Set<Integer> coverage){
+            if (coverage.size() < maxCoverage){
+                cache.add(Pair.of(interval, coverage));
+            }
+        }
+
+    }
 }
