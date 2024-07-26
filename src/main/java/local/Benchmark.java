@@ -7,23 +7,23 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Benchmark {
 
-    static final long SLEEP_TO_SIMULATE_CLOUD_READ_NS = 10_000;
-
     public static void main(String[] args) {
         int numOfColumns = Integer.parseInt(args[0]);
         int numOfRecords = Integer.parseInt(args[1]);
         int numOfFiles = Integer.parseInt(args[2]);
         int numOfQueries = Integer.parseInt(args[3]);
         int numOfIterations = Integer.parseInt(args[4]);
+        long delayForCloudRead = Long.parseLong(args[5]);
 
         long start = System.currentTimeMillis();
-        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, numOfIterations);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, numOfIterations, delayForCloudRead);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
-    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int numOfIterations){
+    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles,
+                             int numOfQueries, int numOfIterations, long delayForCloudRead){
 
         //TODO
         // - organize the flow to be simple and readable
@@ -56,11 +56,11 @@ public class Benchmark {
                 ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
 
                 long startNoCache = System.currentTimeMillis();
-                resultNoCache = runQueryWithNoCache(table, interval);
+                resultNoCache = runQueryWithNoCache(table, interval, delayForCloudRead);
                 long endNoCache = System.currentTimeMillis();
 
                 long startWithCache = System.currentTimeMillis();
-                resultWithCache = runQueryWithCache(table, interval, cache);
+                resultWithCache = runQueryWithCache(table, interval, cache, delayForCloudRead);
                 long endWithCache = System.currentTimeMillis();
 
                 if (resultNoCache != resultWithCache){
@@ -121,14 +121,15 @@ public class Benchmark {
     }
 
     // queries
-    static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, Cache cache){
+    static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval,
+                                 Cache cache, long delayForCloudRead){
         Set<Integer> coverage = new HashSet<>();
         Set<Integer> minCoverage = cache.getMinCoverage(interval);
 
         int resultCount = 0;
         if (minCoverage == null) {
             for (int fileNum : table.keySet()) {
-                busyWait();
+                busyWait(delayForCloudRead);
                 List<ArrayList<Integer>> records = table.get(fileNum);
                 for (ArrayList<Integer> record : records) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
@@ -139,7 +140,7 @@ public class Benchmark {
             }
         }else{
             for (int fileNum : minCoverage){
-                busyWait();
+                busyWait(delayForCloudRead);
                 for (ArrayList<Integer> record : table.get(fileNum)) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
@@ -156,13 +157,13 @@ public class Benchmark {
         return resultCount;
     }
 
-    static int runQueryWithNoCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval){
+    static int runQueryWithNoCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, long delayForCloudRead){
 
         int resultCount = 0;
 
         for (int fileNum : table.keySet()) {
             List<ArrayList<Integer>> records = table.get(fileNum);
-            busyWait();
+            busyWait(delayForCloudRead);
             for (ArrayList<Integer> record : records) {
                 if (Benchmark.intervalContainsRecord(interval, record)) {
                     resultCount++;
@@ -228,9 +229,9 @@ public class Benchmark {
     }
 
     // to simulate that reading file from cloud takes some time
-    static void busyWait(){
+    static void busyWait(long delayForCloudRead){
         long start = System.nanoTime();
-        while(start +  SLEEP_TO_SIMULATE_CLOUD_READ_NS >= System.nanoTime());
+        while(start +  delayForCloudRead >= System.nanoTime());
     }
 
     // cache

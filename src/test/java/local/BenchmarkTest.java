@@ -12,7 +12,7 @@ public class BenchmarkTest {
 
     @Test
     public void runBenchmarkTest(){
-        runBenchmark(5, 100, 10, 5, 2);
+        runBenchmark(10, 1_000, 100, 5, 1, 10_000);
     }
 
     @Test
@@ -56,7 +56,7 @@ public class BenchmarkTest {
 
         ArrayList<Pair<Integer, Integer>> interval = generateInterval(NUM_OF_COLUMNS, 0.5);
 
-        Integer result = runQueryWithCache(table, interval, new Cache(10000));
+        Integer result = runQueryWithCache(table, interval, new Cache(10000), 10_1000);
 
         System.out.println(result);
     }
@@ -72,7 +72,7 @@ public class BenchmarkTest {
 
         ArrayList<Pair<Integer, Integer>> interval = generateInterval(NUM_OF_COLUMNS, 0.5);
 
-        Integer result = runQueryWithNoCache(table, interval);
+        Integer result = runQueryWithNoCache(table, interval, 10_000);
 
         System.out.println(result);
 
