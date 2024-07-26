@@ -1,10 +1,9 @@
-package benchmark;
+package cloud;
 
 import jdk.nashorn.internal.ir.annotations.Ignore;
 import org.apache.spark.sql.SparkSession;
-import org.junit.jupiter.api.Test;
 
-import static benchmark.Benchmark.runFullBenchmark;
+import static cloud.Benchmark.runFullBenchmark;
 
 public class BenchmarkTest {
 

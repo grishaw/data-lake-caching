@@ -1,4 +1,4 @@
-package benchmark;
+package cloud;
 
 import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
@@ -17,7 +17,7 @@ import static org.apache.spark.sql.functions.col;
 public class Benchmark {
 
     public static void main(String[] args) {
-        SparkSession sparkSession = SparkSession.builder().appName("benchmark").getOrCreate();
+        SparkSession sparkSession = SparkSession.builder().appName("cloud").getOrCreate();
 
         String datalakePath = args[0];
 
@@ -42,11 +42,11 @@ public class Benchmark {
         long naiveCacheTotal = 0;
 
         for (int i=1; i<=benchmarksNum; i++) {
-            System.out.println("benchmark " + i + " with coverage cache");
+            System.out.println("cloud " + i + " with coverage cache");
             cacheTotal += benchmark(sparkSession, datalakePath, Benchmark.CacheMode.COVERAGE_CACHE, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
-            System.out.println("benchmark " + i + " without cache");
+            System.out.println("cloud " + i + " without cache");
             nonCacheTotal += benchmark(sparkSession, datalakePath, Benchmark.CacheMode.NO_CACHE, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
-            System.out.println("benchmark " + i + " with naive cache");
+            System.out.println("cloud " + i + " with naive cache");
             naiveCacheTotal += benchmark(sparkSession, datalakePath, Benchmark.CacheMode.NAIVE_CACHE, iterationsNum, coverageUpperThreshold, quantityToMax, discountToMax);
         }
 
