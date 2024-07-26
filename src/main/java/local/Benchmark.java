@@ -9,7 +9,11 @@ public class Benchmark {
 
 
     public static void main(String[] args) {
-        runBenchmark(10, 1_000_000, 100_000, 1000, 3);
+        long start = System.currentTimeMillis();
+        runBenchmark(10, 1_000_000, 100_000, 300, 1);
+        long end = System.currentTimeMillis();
+
+        System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
     static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int numOfIterations){
@@ -22,12 +26,15 @@ public class Benchmark {
         // - add missing tests / refactor existing
         // - add ReadMe, squash commits
         // - consider hashmap for cache instead of list (to avoid duplicate intervals)
+        // - consider running on AWS
 
         ArrayList<List<Long>> listNoCacheTimes = new ArrayList<>(numOfIterations);
         ArrayList<List<Long>> listWithCacheTimes = new ArrayList<>(numOfIterations);
         ArrayList<List<Integer>> cacheHits = new ArrayList<>(numOfIterations);
 
         for (int j=0; j<numOfIterations; j++) {
+
+            System.gc();
 
             listNoCacheTimes.add(new LinkedList<>());
             listWithCacheTimes.add(new LinkedList<>());
@@ -56,7 +63,7 @@ public class Benchmark {
                 listNoCacheTimes.get(j).add(endNoCache - startNoCache);
                 listWithCacheTimes.get(j).add(endWithCache - startWithCache);
 
-                System.gc();
+                System.out.println(j + ", " + i + " done");
             }
 
             cacheHits.add(cache.hits);
@@ -77,7 +84,7 @@ public class Benchmark {
         System.out.println("--------------------------");
         System.out.println("total no cache : " + listNoCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
         System.out.println("total with cache : " + listWithCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
-        System.out.println("total cache hits num : " + cacheHits.stream().flatMap(l -> l.stream()).count());
+        System.out.println("total cache hits num : " + cacheHits.stream().flatMap(l -> l.stream()).count() / numOfIterations);
         System.out.println("total cache hits coverage average : " + cacheHits.stream().flatMap(l -> l.stream()).mapToInt(v -> v)
                 .average().toString());
     }
@@ -113,12 +120,12 @@ public class Benchmark {
 
         int resultCount = 0;
         if (minCoverage == null) {
-            for (Map.Entry<Integer, List<ArrayList<Integer>>> entry : table.entrySet()) {
-                for (ArrayList<Integer> record : entry.getValue()) {
+            for (int fileNum : table.keySet()) {
+                List<ArrayList<Integer>> records = table.get(fileNum);
+                for (ArrayList<Integer> record : records) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
-                        coverage.add(entry.getKey());
-                        System.out.println("with cache-no-hit, found record number : " + resultCount);
+                        coverage.add(fileNum);
                     }
                 }
             }
@@ -128,7 +135,6 @@ public class Benchmark {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
                         coverage.add(fileNum);
-                        System.out.println("with cache-hit, found record number : " + resultCount);
                     }
                 }
             }
@@ -145,11 +151,11 @@ public class Benchmark {
 
         int resultCount = 0;
 
-        for (Map.Entry<Integer, List<ArrayList<Integer>>> entry : table.entrySet()) {
-            for (ArrayList<Integer> record : entry.getValue()) {
+        for (int fileNum : table.keySet()) {
+            List<ArrayList<Integer>> records = table.get(fileNum);
+            for (ArrayList<Integer> record : records) {
                 if (Benchmark.intervalContainsRecord(interval, record)) {
                     resultCount++;
-                    System.out.println("no cache, found record number : " + resultCount);
                 }
             }
         }
