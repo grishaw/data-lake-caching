@@ -10,8 +10,14 @@ public class Benchmark {
     static final long SLEEP_TO_SIMULATE_CLOUD_READ_NS = 10_000;
 
     public static void main(String[] args) {
+        int numOfColumns = Integer.parseInt(args[0]);
+        int numOfRecords = Integer.parseInt(args[1]);
+        int numOfFiles = Integer.parseInt(args[2]);
+        int numOfQueries = Integer.parseInt(args[3]);
+        int numOfIterations = Integer.parseInt(args[4]);
+
         long start = System.currentTimeMillis();
-        runBenchmark(10, 1_000_000, 100_000, 1000, 2);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, numOfIterations);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
