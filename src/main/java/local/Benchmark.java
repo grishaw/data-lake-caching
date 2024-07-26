@@ -17,7 +17,6 @@ public class Benchmark {
         //TODO
         // - organize the flow to be simple and readable
         // - add relevant classes - for table, interval, record (don't use apache pair)
-        // - rename benchmark package to "cloud"
         // - try different params
         // - add cache data structure type (basic/enhanced/spatial type) and cache replacement type (unlimited, policy type)
         // - add missing tests / refactor existing
@@ -79,9 +78,11 @@ public class Benchmark {
         System.out.println("total no cache : " + listNoCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
         System.out.println("total with cache : " + listWithCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
         System.out.println("total cache hits num : " + cacheHits.stream().flatMap(l -> l.stream()).count());
-        System.out.println("total cache hits coverage average : " + cacheHits.stream().flatMap(l -> l.stream()).mapToInt(v -> v).average().getAsDouble());
+        System.out.println("total cache hits coverage average : " + cacheHits.stream().flatMap(l -> l.stream()).mapToInt(v -> v)
+                .average().toString());
     }
 
+    // table
     static HashMap<Integer, List<ArrayList<Integer>>> createRandomTable(int numOfColumns, int numOfRecords, int numOfFiles){
 
         HashMap<Integer, List<ArrayList<Integer>>> result = new HashMap<>();
@@ -105,28 +106,7 @@ public class Benchmark {
         return result;
     }
 
-    static ArrayList<Pair<Integer, Integer>> generateInterval (int totalTerms, double percentageOfNonEmptyTerms){
-        ArrayList<Pair<Integer, Integer>> result = new ArrayList<>(totalTerms);
-
-        for (int i=0; i < totalTerms; i++){
-
-            double randomValue =  ThreadLocalRandom.current().nextDouble();
-
-            // non-empty case - generate random term
-            if (randomValue <= percentageOfNonEmptyTerms){
-                int random1 = ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
-                int random2 = ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
-
-                result.add(Pair.of(Math.min(random1, random2), Math.max(random1, random2)));
-            }else{
-                // no term - put min/max
-                result.add(Pair.of(Integer.MIN_VALUE, Integer.MAX_VALUE));
-            }
-        }
-
-        return result;
-    }
-
+    // queries
     static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, Cache cache){
         Set<Integer> coverage = new HashSet<>();
         Set<Integer> minCoverage = cache.getMinCoverage(interval);
@@ -177,6 +157,30 @@ public class Benchmark {
         return resultCount;
     }
 
+    // intervals
+
+    static ArrayList<Pair<Integer, Integer>> generateInterval (int totalTerms, double percentageOfNonEmptyTerms){
+        ArrayList<Pair<Integer, Integer>> result = new ArrayList<>(totalTerms);
+
+        for (int i=0; i < totalTerms; i++){
+
+            double randomValue =  ThreadLocalRandom.current().nextDouble();
+
+            // non-empty case - generate random term
+            if (randomValue <= percentageOfNonEmptyTerms){
+                int random1 = ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
+                int random2 = ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
+
+                result.add(Pair.of(Math.min(random1, random2), Math.max(random1, random2)));
+            }else{
+                // no term - put min/max
+                result.add(Pair.of(Integer.MIN_VALUE, Integer.MAX_VALUE));
+            }
+        }
+
+        return result;
+    }
+
     static boolean intervalContainsRecord(ArrayList<Pair<Integer, Integer>> interval, ArrayList<Integer> record){
         if (interval.size() != record.size()){
             throw new IllegalArgumentException("interval and record should be of the same size!");
@@ -207,6 +211,7 @@ public class Benchmark {
 
     }
 
+    // cache
     static class Cache {
         List<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache;
         List<Integer> hits;

@@ -11,6 +11,11 @@ import static local.Benchmark.*;
 public class BenchmarkTest {
 
     @Test
+    public void runBenchmarkTest(){
+        runBenchmark(5, 100, 10, 5, 2);
+    }
+
+    @Test
     public void createRandomTableTest(){
 
         final int NUM_OF_FILES = 100;
@@ -36,6 +41,27 @@ public class BenchmarkTest {
     }
 
     @Test
+    public void generateRecordTest(){
+        List<Integer> record = generateRecord(5);
+        System.out.println(record);
+    }
+
+    @Test
+    public void runQueryWithCacheTest(){
+        final int NUM_OF_FILES = 10000;
+        final int NUM_OF_COLUMNS = 10;
+        final int NUM_OF_RECORDS = 1_000_000;
+
+        HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(NUM_OF_COLUMNS, NUM_OF_RECORDS, NUM_OF_FILES);
+
+        ArrayList<Pair<Integer, Integer>> interval = generateInterval(NUM_OF_COLUMNS, 0.5);
+
+        Integer result = runQueryWithCache(table, interval, new Cache(10000));
+
+        System.out.println(result);
+    }
+
+    @Test
     public void runQueryWithNoCacheTest(){
 
         final int NUM_OF_FILES = 10000;
@@ -50,12 +76,6 @@ public class BenchmarkTest {
 
         System.out.println(result);
 
-    }
-
-    @Test
-    public void generateRecordTest(){
-        List<Integer> record = generateRecord(5);
-        System.out.println(record);
     }
 
     @Test
