@@ -7,10 +7,11 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Benchmark {
 
+    static final long SLEEP_TO_SIMULATE_CLOUD_READ_NS = 10_000;
 
     public static void main(String[] args) {
         long start = System.currentTimeMillis();
-        runBenchmark(10, 1_000_000, 100_000, 300, 1);
+        runBenchmark(10, 1_000_000, 100_000, 1000, 2);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
@@ -121,6 +122,7 @@ public class Benchmark {
         int resultCount = 0;
         if (minCoverage == null) {
             for (int fileNum : table.keySet()) {
+                busyWait();
                 List<ArrayList<Integer>> records = table.get(fileNum);
                 for (ArrayList<Integer> record : records) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
@@ -131,6 +133,7 @@ public class Benchmark {
             }
         }else{
             for (int fileNum : minCoverage){
+                busyWait();
                 for (ArrayList<Integer> record : table.get(fileNum)) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
@@ -153,6 +156,7 @@ public class Benchmark {
 
         for (int fileNum : table.keySet()) {
             List<ArrayList<Integer>> records = table.get(fileNum);
+            busyWait();
             for (ArrayList<Integer> record : records) {
                 if (Benchmark.intervalContainsRecord(interval, record)) {
                     resultCount++;
@@ -215,6 +219,12 @@ public class Benchmark {
 
         return true;
 
+    }
+
+    // to simulate that reading file from cloud takes some time
+    static void busyWait(){
+        long start = System.nanoTime();
+        while(start +  SLEEP_TO_SIMULATE_CLOUD_READ_NS >= System.nanoTime());
     }
 
     // cache
