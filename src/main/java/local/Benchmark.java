@@ -7,23 +7,22 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Benchmark {
 
+    static final long DELAY_FOR_CLOUD_READ = 3000;
+
     public static void main(String[] args) {
         int numOfColumns = Integer.parseInt(args[0]);
         int numOfRecords = Integer.parseInt(args[1]);
         int numOfFiles = Integer.parseInt(args[2]);
         int numOfQueries = Integer.parseInt(args[3]);
-        int numOfIterations = Integer.parseInt(args[4]);
-        long delayForCloudRead = Long.parseLong(args[5]);
 
         long start = System.currentTimeMillis();
-        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, numOfIterations, delayForCloudRead);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
-    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles,
-                             int numOfQueries, int numOfIterations, long delayForCloudRead){
+    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries){
 
         //TODO
         // - organize the flow to be simple and readable
@@ -35,65 +34,73 @@ public class Benchmark {
         // - consider hashmap for cache instead of list (to avoid duplicate intervals)
         // - consider running on AWS
 
-        ArrayList<List<Long>> listNoCacheTimes = new ArrayList<>(numOfIterations);
-        ArrayList<List<Long>> listWithCacheTimes = new ArrayList<>(numOfIterations);
-        ArrayList<List<Integer>> cacheHits = new ArrayList<>(numOfIterations);
+        ArrayList<Long> listNoCacheTimes = new ArrayList<>();
+        ArrayList<Long> listNoCacheTimesSummary = new ArrayList<>();
 
-        for (int j=0; j<numOfIterations; j++) {
+        ArrayList<Long> listWithCacheTimes = new ArrayList<>();
+        ArrayList<Long> listWithCacheTimesSummary = new ArrayList<>();
 
-            System.gc();
+        ArrayList<Integer> cacheHitsSummary = new ArrayList<>();
 
-            listNoCacheTimes.add(new LinkedList<>());
-            listWithCacheTimes.add(new LinkedList<>());
+        ArrayList<Long> hitsCoverageAverageSummary = new ArrayList<>();
 
-            HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
-            Cache cache = new Cache((int) Math.round(numOfFiles * 0.7));
+        HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
+        Cache cache = new Cache((int) Math.round(numOfFiles * 0.7));
 
-            int resultNoCache;
-            int resultWithCache;
-            for (int i = 0; i < numOfQueries; i++) {
+        int resultNoCache;
+        int resultWithCache;
+        for (int i = 1; i <= numOfQueries; i++) {
 
-                ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
+            ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
 
-                long startNoCache = System.currentTimeMillis();
-                resultNoCache = runQueryWithNoCache(table, interval, delayForCloudRead);
-                long endNoCache = System.currentTimeMillis();
+            long startNoCache = System.currentTimeMillis();
+            resultNoCache = runQueryWithNoCache(table, interval);
+            long endNoCache = System.currentTimeMillis();
 
-                long startWithCache = System.currentTimeMillis();
-                resultWithCache = runQueryWithCache(table, interval, cache, delayForCloudRead);
-                long endWithCache = System.currentTimeMillis();
+            long startWithCache = System.currentTimeMillis();
+            resultWithCache = runQueryWithCache(table, interval, cache);
+            long endWithCache = System.currentTimeMillis();
 
-                if (resultNoCache != resultWithCache){
-                    throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache);
-                }
-
-                listNoCacheTimes.get(j).add(endNoCache - startNoCache);
-                listWithCacheTimes.get(j).add(endWithCache - startWithCache);
-
-                System.out.println(j + ", " + i + " done");
+            if (resultNoCache != resultWithCache){
+                throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache);
             }
 
-            cacheHits.add(cache.hits);
+            listNoCacheTimes.add(endNoCache - startNoCache);
+            listWithCacheTimes.add(endWithCache - startWithCache);
+
+            System.out.println(i + " done");
+
+            if (i>0 && (i % 1000 == 0)){
+                System.out.println("num of queries : " + i);
+
+                Long noCacheAverage = (long) listNoCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                System.out.println("no cache average : " + noCacheAverage);
+                listNoCacheTimesSummary.add(noCacheAverage);
+
+                Long withCacheAverage = (long) listWithCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                System.out.println("with cache average : " + withCacheAverage);
+                listWithCacheTimesSummary.add(withCacheAverage);
+
+                Integer hits = cache.hits.isEmpty() ? null : cache.hits.size();
+                System.out.println("hits num total = " + hits);
+                cacheHitsSummary.add(hits);
+
+                Long hitsCoverageAverage = cache.hits.isEmpty() ? null : ((long) cache.hits.stream().mapToInt(v -> v).average().getAsDouble());
+                System.out.println("hits coverage average = " +  hitsCoverageAverage);
+                hitsCoverageAverageSummary.add(hitsCoverageAverage);
+
+                System.gc();
+            }
         }
 
-        // ------------------------------------------------
-
-        System.out.println("--------------------------");
-
-        for (int i=0; i<numOfIterations; i++) {
-            System.out.println(i + ", no cache : " + listNoCacheTimes.get(i).stream().mapToLong(v -> v).average().getAsDouble());
-            System.out.println(i + ", with cache : " + listWithCacheTimes.get(i).stream().mapToLong(v -> v).average().getAsDouble());
-            System.out.println(i + ", hits = " + cacheHits.get(i));
-            System.out.println(i + ", hits num = " + cacheHits.get(i).size());
-            System.out.println(i + ", hits coverage average = " + cacheHits.get(i).stream().mapToInt(v -> v).average());
+        for (int i=1000; i<=numOfQueries ; i+=1000){
+            System.out.println("---------------------------------");
+            System.out.println(i);
+            System.out.println("no cache average : " + listNoCacheTimesSummary.get(i/1000 -1));
+            System.out.println("with cache average : " + listWithCacheTimesSummary.get(i/1000 -1));
+            System.out.println("hits num total : " + cacheHitsSummary.get(i/1000 -1));
+            System.out.println("hits coverage average = " +  hitsCoverageAverageSummary.get(i/1000 -1));
         }
-
-        System.out.println("--------------------------");
-        System.out.println("total no cache : " + listNoCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
-        System.out.println("total with cache : " + listWithCacheTimes.stream().flatMap(l -> l.stream()).mapToLong(v -> v).average().getAsDouble());
-        System.out.println("total cache hits num : " + cacheHits.stream().flatMap(l -> l.stream()).count() / numOfIterations);
-        System.out.println("total cache hits coverage average : " + cacheHits.stream().flatMap(l -> l.stream()).mapToInt(v -> v)
-                .average().toString());
     }
 
     // table
@@ -121,15 +128,14 @@ public class Benchmark {
     }
 
     // queries
-    static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval,
-                                 Cache cache, long delayForCloudRead){
+    static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, Cache cache){
         Set<Integer> coverage = new HashSet<>();
         Set<Integer> minCoverage = cache.getMinCoverage(interval);
 
         int resultCount = 0;
         if (minCoverage == null) {
             for (int fileNum : table.keySet()) {
-                busyWait(delayForCloudRead);
+                readFileFromCloudSimulation();
                 List<ArrayList<Integer>> records = table.get(fileNum);
                 for (ArrayList<Integer> record : records) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
@@ -140,7 +146,7 @@ public class Benchmark {
             }
         }else{
             for (int fileNum : minCoverage){
-                busyWait(delayForCloudRead);
+                readFileFromCloudSimulation();
                 for (ArrayList<Integer> record : table.get(fileNum)) {
                     if (Benchmark.intervalContainsRecord(interval, record)) {
                         resultCount++;
@@ -157,13 +163,13 @@ public class Benchmark {
         return resultCount;
     }
 
-    static int runQueryWithNoCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, long delayForCloudRead){
+    static int runQueryWithNoCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval){
 
         int resultCount = 0;
 
         for (int fileNum : table.keySet()) {
             List<ArrayList<Integer>> records = table.get(fileNum);
-            busyWait(delayForCloudRead);
+            readFileFromCloudSimulation();
             for (ArrayList<Integer> record : records) {
                 if (Benchmark.intervalContainsRecord(interval, record)) {
                     resultCount++;
@@ -228,10 +234,9 @@ public class Benchmark {
 
     }
 
-    // to simulate that reading file from cloud takes some time
-    static void busyWait(long delayForCloudRead){
+    static void readFileFromCloudSimulation(){
         long start = System.nanoTime();
-        while(start +  delayForCloudRead >= System.nanoTime());
+        while(start +  DELAY_FOR_CLOUD_READ >= System.nanoTime());
     }
 
     // cache
