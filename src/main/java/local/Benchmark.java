@@ -10,7 +10,8 @@ public class Benchmark {
     static final long DELAY_FOR_CLOUD_READ = 3000;
     static final int MIN_VALUE = - 1_000_000;
     static final int MAX_VALUE =  1_000_000;
-
+    static final int UNLIMITED_CACHE_CAPACITY = -1;
+    static final double MAX_FILES_FRACTION_FOR_CACHE = 0.7;
 
     public static void main(String[] args) {
         int numOfColumns = Integer.parseInt(args[0]);
@@ -19,15 +20,17 @@ public class Benchmark {
         int numOfQueries = Integer.parseInt(args[3]);
         int checkpointNum = Integer.parseInt(args[4]);
         int cacheCapacity = Integer.parseInt(args[5]);
+        double w1 = Double.parseDouble(args[6]);
+        double w2 = Double.parseDouble(args[7]);
 
         long start = System.currentTimeMillis();
-        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, w1, w2);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
-    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum, int cacheCapacity){
+    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum, int cacheCapacity, double w1, double w2){
 
         //TODO
         // - organize the flow to be simple and readable
@@ -49,14 +52,16 @@ public class Benchmark {
         ArrayList<Long> listWithCacheRemoveMinTimesSummary = new ArrayList<>();
 
         ArrayList<Integer> cacheHitsSummary = new ArrayList<>();
+        ArrayList<Integer> cacheRemoveMinHitsSummary = new ArrayList<>();
 
         ArrayList<Long> hitsCoverageAverageSummary = new ArrayList<>();
+        ArrayList<Long> hitsRemoveMinCoverageAverageSummary = new ArrayList<>();
 
         HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
 
-        Cache cacheUnlimited = new Cache((int) Math.round(numOfFiles * 0.7), -1);
-
-        Cache cacheRemoveMin = new Cache((int) Math.round(numOfFiles * 0.7), cacheCapacity);
+        int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
+        Cache cacheUnlimited = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2);
+        Cache cacheRemoveMin = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2);
 
         int resultNoCache;
         int resultWithCache;
@@ -79,7 +84,7 @@ public class Benchmark {
             long endWithCacheRemoveMin = System.currentTimeMillis();
 
             if (resultNoCache != resultWithCache || resultWithCache !=  resultWithCacheRemoveMin){
-                throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache);
+                throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache + ", " + resultWithCacheRemoveMin);
             }
 
             listNoCacheTimes.add(endNoCache - startNoCache);
@@ -104,12 +109,20 @@ public class Benchmark {
                 listWithCacheRemoveMinTimesSummary.add(withCacheRemoveMinAverage);
 
                 Integer hits = cacheUnlimited.hits.isEmpty() ? null : cacheUnlimited.hits.size();
-                System.out.println("hits num total = " + hits);
+                System.out.println("hits for unlimited cache total = " + hits);
                 cacheHitsSummary.add(hits);
 
+                hits = cacheRemoveMin.hits.isEmpty() ? null : cacheRemoveMin.hits.size();
+                System.out.println("hits for limited cache total = " + hits);
+                cacheRemoveMinHitsSummary.add(hits);
+
                 Long hitsCoverageAverage = cacheUnlimited.hits.isEmpty() ? null : ((long) cacheUnlimited.hits.stream().mapToInt(v -> v).average().getAsDouble());
-                System.out.println("hits coverage average = " +  hitsCoverageAverage);
+                System.out.println("hits unlimited cache coverage average = " +  hitsCoverageAverage);
                 hitsCoverageAverageSummary.add(hitsCoverageAverage);
+
+                hitsCoverageAverage = cacheRemoveMin.hits.isEmpty() ? null : ((long) cacheRemoveMin.hits.stream().mapToInt(v -> v).average().getAsDouble());
+                System.out.println("hits limited cache coverage average = " +  hitsCoverageAverage);
+                hitsRemoveMinCoverageAverageSummary.add(hitsCoverageAverage);
 
                 System.gc();
             }
@@ -122,8 +135,10 @@ public class Benchmark {
             System.out.println("no cache average : " + listNoCacheTimesSummary.get(curIndex));
             System.out.println("with cache average : " + listWithCacheTimesSummary.get(curIndex));
             System.out.println("with cache remove min average : " + listWithCacheRemoveMinTimesSummary.get(curIndex));
-            System.out.println("hits num total : " + cacheHitsSummary.get(curIndex));
-            System.out.println("hits coverage average = " +  hitsCoverageAverageSummary.get(curIndex));
+            System.out.println("hits unlimited cache total : " + cacheHitsSummary.get(curIndex));
+            System.out.println("hits limited cache total : " + cacheRemoveMinHitsSummary.get(curIndex));
+            System.out.println("hits unlimited cache coverage average = " +  hitsCoverageAverageSummary.get(curIndex));
+            System.out.println("hits limited cache coverage average = " +  hitsRemoveMinCoverageAverageSummary.get(curIndex));
         }
     }
 
@@ -268,21 +283,29 @@ public class Benchmark {
         ArrayList<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache;
         List<Integer> hits;
 
-        // min-heap for "combined" approach
         PriorityQueue<Double> heap;
 
         int maxCoverage;
         int capacity;
 
-        double w1 = 1;
-        double w2 = 0;
+        double w1;
+        double w2;
 
-        public Cache(int maxCoverage, int capacity){
+        double maxVolume;
+
+        public Cache(int maxCoverage, int capacity, int numOfColumns, double w1, double w2){
             this.maxCoverage = maxCoverage;
             this.capacity = capacity;
-            cache = new ArrayList<>(capacity == -1 ? 1000 : capacity);
+            cache = new ArrayList<>();
             hits = new LinkedList<>();
-            heap = new PriorityQueue<>(capacity == -1 ? 1000 : capacity);
+            heap = new PriorityQueue<>();
+            maxVolume = getMaxVolume(numOfColumns);
+            this.w1 = w1;
+            this.w2 = w2;
+
+            if (capacity != UNLIMITED_CACHE_CAPACITY && (w1 + w2 != 1)){
+                throw new IllegalArgumentException("w1 + w1 must be 1");
+            }
         }
 
         Set<Integer> getMinCoverage (ArrayList<Pair<Integer, Integer>> queryInterval){
@@ -305,12 +328,11 @@ public class Benchmark {
             if (coverage.size() < maxCoverage){
 
                 // unlimited
-                if (capacity == -1){
+                if (capacity == UNLIMITED_CACHE_CAPACITY){
                     cache.add(Pair.of(interval, coverage));
                 } else {
 
                     double gFunctionResult = gFunction(interval, coverage.size());
-
 
                     if (cache.size() > capacity) {
                         Double toRemove = heap.poll();
@@ -333,7 +355,6 @@ public class Benchmark {
 
         double gFunction(ArrayList<Pair<Integer, Integer>> interval, int coverageSize){
             double intervalVolume = intervalVolume(interval);
-            double maxVolume = getMaxVolume(interval.size());
 
             return w1 * (intervalVolume / maxVolume ) +
                     w2 * (1 - ( (coverageSize / (1.0 * maxCoverage)) ));
