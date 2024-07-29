@@ -8,6 +8,9 @@ import java.util.concurrent.ThreadLocalRandom;
 public class Benchmark {
 
     static final long DELAY_FOR_CLOUD_READ = 3000;
+    static final int MIN_VALUE = - 1_000_000;
+    static final int MAX_VALUE =  1_000_000;
+
 
     public static void main(String[] args) {
         int numOfColumns = Integer.parseInt(args[0]);
@@ -56,8 +59,8 @@ public class Benchmark {
 
         Cache cacheUnlimited = new Cache((int) Math.round(numOfFiles * 0.7), -1);
 
-        Cache cacheRemoveMax = new Cache((int) Math.round(numOfFiles * 0.7), cacheCapacity);
-        Cache cacheRemoveMin = new Cache((int) Math.round(numOfFiles * 0.7), (-1) * cacheCapacity);
+        Cache cacheRemoveMin = new Cache((int) Math.round(numOfFiles * 0.7), cacheCapacity);
+        Cache cacheRemoveMax = new Cache((int) Math.round(numOfFiles * 0.7), (-1) * cacheCapacity);
 
         int resultNoCache;
         int resultWithCache;
@@ -157,7 +160,7 @@ public class Benchmark {
         ArrayList<Integer> result = new ArrayList<>(numOfColumns);
 
         for (int i=0; i<numOfColumns; i++){
-            result.add(ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE));
+            result.add(ThreadLocalRandom.current().nextInt(MIN_VALUE, MAX_VALUE));
         }
 
         return result;
@@ -227,13 +230,13 @@ public class Benchmark {
 
             // non-empty case - generate random term
             if (randomValue <= percentageOfNonEmptyTerms){
-                int random1 = ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
-                int random2 = ThreadLocalRandom.current().nextInt(Integer.MIN_VALUE, Integer.MAX_VALUE);
+                int random1 = ThreadLocalRandom.current().nextInt(MIN_VALUE, MAX_VALUE);
+                int random2 = ThreadLocalRandom.current().nextInt(MIN_VALUE, MAX_VALUE);
 
                 result.add(Pair.of(Math.min(random1, random2), Math.max(random1, random2)));
             }else{
                 // no term - put min/max
-                result.add(Pair.of(Integer.MIN_VALUE, Integer.MAX_VALUE));
+                result.add(Pair.of(MIN_VALUE, MAX_VALUE));
             }
         }
 
@@ -281,7 +284,7 @@ public class Benchmark {
         List<Integer> hits;
 
         // min-heap <coverage size>
-        PriorityQueue<Integer> heap;
+        PriorityQueue<Double> heap;
 
         int maxCoverage;
         int capacity;
@@ -323,13 +326,25 @@ public class Benchmark {
                 } else {
 
                     if (cache.size() > capacity) {
-                        Integer toRemove = heap.poll();
+                        Double toRemove = heap.poll();
                         if (toRemove != null) {
-                            cache.removeIf(p -> p.getRight().size() == toRemove);
+                            cache.removeIf(p -> p.getLeft().stream().mapToInt(k -> k.getRight() - k.getLeft()).mapToDouble(x -> Math.log(x)).sum() == toRemove);
+                            System.out.println("heap = " + heap);
+                            System.out.println("removing " + toRemove);
                         }
                     }
 
-                    heap.add(coverage.size());
+                    double intervalVolumeAsLogSum = interval.stream().
+                            mapToInt(p -> p.getRight() - p.getLeft())
+                            .mapToDouble(x -> Math.log(x))
+                            .sum();
+
+                    System.out.println("interval = " + interval);
+                    System.out.println("intervalVolumeAsLogSum = " + intervalVolumeAsLogSum);
+
+
+                    heap.add(intervalVolumeAsLogSum);
+
                     cache.add(Pair.of(interval, coverage));
                 }
 
