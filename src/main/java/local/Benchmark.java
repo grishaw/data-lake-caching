@@ -45,9 +45,6 @@ public class Benchmark {
         ArrayList<Long> listWithCacheTimes = new ArrayList<>();
         ArrayList<Long> listWithCacheTimesSummary = new ArrayList<>();
 
-        ArrayList<Long> listWithCacheRemoveMaxTimes = new ArrayList<>();
-        ArrayList<Long> listWithCacheRemoveMaxTimesSummary = new ArrayList<>();
-
         ArrayList<Long> listWithCacheRemoveMinTimes = new ArrayList<>();
         ArrayList<Long> listWithCacheRemoveMinTimesSummary = new ArrayList<>();
 
@@ -60,11 +57,9 @@ public class Benchmark {
         Cache cacheUnlimited = new Cache((int) Math.round(numOfFiles * 0.7), -1);
 
         Cache cacheRemoveMin = new Cache((int) Math.round(numOfFiles * 0.7), cacheCapacity);
-        Cache cacheRemoveMax = new Cache((int) Math.round(numOfFiles * 0.7), (-1) * cacheCapacity);
 
         int resultNoCache;
         int resultWithCache;
-        int resultWithCacheRemoveMax;
         int resultWithCacheRemoveMin;
 
         for (int i = 1; i <= numOfQueries; i++) {
@@ -79,21 +74,16 @@ public class Benchmark {
             resultWithCache = runQueryWithCache(table, interval, cacheUnlimited);
             long endWithCache = System.currentTimeMillis();
 
-            long startWithCacheRemoveMax = System.currentTimeMillis();
-            resultWithCacheRemoveMax = runQueryWithCache(table, interval, cacheRemoveMax);
-            long endWithCacheRemoveMax = System.currentTimeMillis();
-
             long startWithCacheRemoveMin = System.currentTimeMillis();
             resultWithCacheRemoveMin = runQueryWithCache(table, interval, cacheRemoveMin);
             long endWithCacheRemoveMin = System.currentTimeMillis();
 
-            if (resultNoCache != resultWithCache || resultWithCache != resultWithCacheRemoveMax || resultWithCacheRemoveMax != resultWithCacheRemoveMin){
+            if (resultNoCache != resultWithCache || resultWithCache !=  resultWithCacheRemoveMin){
                 throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache);
             }
 
             listNoCacheTimes.add(endNoCache - startNoCache);
             listWithCacheTimes.add(endWithCache - startWithCache);
-            listWithCacheRemoveMaxTimes.add(endWithCacheRemoveMax - startWithCacheRemoveMax);
             listWithCacheRemoveMinTimes.add(endWithCacheRemoveMin - startWithCacheRemoveMin);
 
             System.out.println(i + " done");
@@ -108,10 +98,6 @@ public class Benchmark {
                 Long withCacheAverage = (long) listWithCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
                 System.out.println("with cache average : " + withCacheAverage);
                 listWithCacheTimesSummary.add(withCacheAverage);
-
-                Long withCacheRemoveMaxAverage = (long) listWithCacheRemoveMaxTimes.stream().mapToLong(v -> v).average().getAsDouble();
-                System.out.println("with cache remove max average : " + withCacheRemoveMaxAverage);
-                listWithCacheRemoveMaxTimesSummary.add(withCacheRemoveMaxAverage);
 
                 Long withCacheRemoveMinAverage = (long) listWithCacheRemoveMinTimes.stream().mapToLong(v -> v).average().getAsDouble();
                 System.out.println("with cache remove min average : " + withCacheRemoveMinAverage);
@@ -135,7 +121,6 @@ public class Benchmark {
             System.out.println(i);
             System.out.println("no cache average : " + listNoCacheTimesSummary.get(curIndex));
             System.out.println("with cache average : " + listWithCacheTimesSummary.get(curIndex));
-            System.out.println("with cache remove max average : " + listWithCacheRemoveMaxTimesSummary.get(curIndex));
             System.out.println("with cache remove min average : " + listWithCacheRemoveMinTimesSummary.get(curIndex));
             System.out.println("hits num total : " + cacheHitsSummary.get(curIndex));
             System.out.println("hits coverage average = " +  hitsCoverageAverageSummary.get(curIndex));
@@ -283,24 +268,21 @@ public class Benchmark {
         ArrayList<Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>>> cache;
         List<Integer> hits;
 
-        // min-heap <coverage size>
+        // min-heap for "combined" approach
         PriorityQueue<Double> heap;
 
         int maxCoverage;
         int capacity;
 
+        double w1 = 1;
+        double w2 = 0;
+
         public Cache(int maxCoverage, int capacity){
             this.maxCoverage = maxCoverage;
             this.capacity = capacity;
-            cache = new ArrayList<>(capacity == -1 ? 1000 : Math.abs(capacity) );
+            cache = new ArrayList<>(capacity == -1 ? 1000 : capacity);
             hits = new LinkedList<>();
-            if (capacity < -1) {
-                heap = new PriorityQueue<>(Math.abs(capacity), Collections.reverseOrder());
-                this.capacity = Math.abs(capacity);
-            }else{
-                heap = new PriorityQueue<>(capacity == -1 ? 1000 : Math.abs(capacity));
-            }
-
+            heap = new PriorityQueue<>(capacity == -1 ? 1000 : capacity);
         }
 
         Set<Integer> getMinCoverage (ArrayList<Pair<Integer, Integer>> queryInterval){
@@ -319,37 +301,60 @@ public class Benchmark {
         }
 
         void put(ArrayList<Pair<Integer, Integer>> interval, Set<Integer> coverage){
+
             if (coverage.size() < maxCoverage){
 
+                // unlimited
                 if (capacity == -1){
                     cache.add(Pair.of(interval, coverage));
                 } else {
 
+                    double gFunctionResult = gFunction(interval, coverage.size());
+
+
                     if (cache.size() > capacity) {
                         Double toRemove = heap.poll();
                         if (toRemove != null) {
-                            cache.removeIf(p -> p.getLeft().stream().mapToInt(k -> k.getRight() - k.getLeft()).mapToDouble(x -> Math.log(x)).sum() == toRemove);
-                            System.out.println("heap = " + heap);
-                            System.out.println("removing " + toRemove);
+                            for (Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>> cur : cache) {
+                                if (gFunction(cur.getLeft(), cur.getRight().size()) == toRemove){
+                                    cache.remove(cur);
+                                    break;
+                                }
+                            }
                         }
                     }
 
-                    double intervalVolumeAsLogSum = interval.stream().
-                            mapToInt(p -> p.getRight() - p.getLeft())
-                            .mapToDouble(x -> Math.log(x))
-                            .sum();
-
-                    System.out.println("interval = " + interval);
-                    System.out.println("intervalVolumeAsLogSum = " + intervalVolumeAsLogSum);
-
-
-                    heap.add(intervalVolumeAsLogSum);
-
+                    heap.add(gFunctionResult);
                     cache.add(Pair.of(interval, coverage));
                 }
 
             }
         }
 
+        double gFunction(ArrayList<Pair<Integer, Integer>> interval, int coverageSize){
+            double intervalVolume = intervalVolume(interval);
+            double maxVolume = getMaxVolume(interval.size());
+
+            return w1 * (intervalVolume / maxVolume ) +
+                    w2 * (1 - ( (coverageSize / (1.0 * maxCoverage)) ));
+        }
     }
+
+    static double intervalVolume(ArrayList<Pair<Integer, Integer>> interval){
+        return interval.stream().
+                mapToInt(p -> p.getRight() - p.getLeft())
+                .mapToDouble(x -> Math.log(x))
+                .sum();
+    }
+
+    static double getMaxVolume(int numOfCols){
+        ArrayList<Pair<Integer, Integer>> interval = new ArrayList<>(numOfCols);
+
+        for (int i=0; i< numOfCols; i++){
+            interval.add(Pair.of(MIN_VALUE, MAX_VALUE));
+        }
+
+        return intervalVolume(interval);
+    }
+
 }
