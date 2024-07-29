@@ -14,15 +14,16 @@ public class Benchmark {
         int numOfRecords = Integer.parseInt(args[1]);
         int numOfFiles = Integer.parseInt(args[2]);
         int numOfQueries = Integer.parseInt(args[3]);
+        int checkpointNum = Integer.parseInt(args[4]);
 
         long start = System.currentTimeMillis();
-        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
-    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries){
+    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum){
 
         //TODO
         // - organize the flow to be simple and readable
@@ -70,7 +71,7 @@ public class Benchmark {
 
             System.out.println(i + " done");
 
-            if (i>0 && (i % 1000 == 0)){
+            if (i>0 && (i % checkpointNum == 0)){
                 System.out.println("num of queries : " + i);
 
                 Long noCacheAverage = (long) listNoCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
@@ -93,13 +94,14 @@ public class Benchmark {
             }
         }
 
-        for (int i=1000; i<=numOfQueries ; i+=1000){
+        for (int i=checkpointNum; i<=numOfQueries ; i+=checkpointNum){
+            int curIndex = i/checkpointNum - 1;
             System.out.println("---------------------------------");
             System.out.println(i);
-            System.out.println("no cache average : " + listNoCacheTimesSummary.get(i/1000 -1));
-            System.out.println("with cache average : " + listWithCacheTimesSummary.get(i/1000 -1));
-            System.out.println("hits num total : " + cacheHitsSummary.get(i/1000 -1));
-            System.out.println("hits coverage average = " +  hitsCoverageAverageSummary.get(i/1000 -1));
+            System.out.println("no cache average : " + listNoCacheTimesSummary.get(curIndex));
+            System.out.println("with cache average : " + listWithCacheTimesSummary.get(curIndex));
+            System.out.println("hits num total : " + cacheHitsSummary.get(curIndex));
+            System.out.println("hits coverage average = " +  hitsCoverageAverageSummary.get(curIndex));
         }
     }
 
