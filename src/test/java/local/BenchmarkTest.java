@@ -1,6 +1,5 @@
 package local;
 
-import jdk.nashorn.internal.ir.annotations.Ignore;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -13,7 +12,7 @@ public class BenchmarkTest {
 
     @Test
     public void runBenchmarkTest(){
-        runBenchmark(10, 100_000, 30_000, 100, 100, 100, 0, 1);
+        //runBenchmark(10, 1_000_000, 100_000, 10_000, 1000, 100, 1, 0);
     }
 
     @Test
@@ -57,7 +56,7 @@ public class BenchmarkTest {
 
         ArrayList<Pair<Integer, Integer>> interval = generateInterval(NUM_OF_COLUMNS, 0.5);
 
-        Integer result = runQueryWithCache(table, interval, new Cache(10000, 100, NUM_OF_COLUMNS, 0, 1));
+        Integer result = runQueryWithCache(table, interval, new Cache(10000, 100, NUM_OF_COLUMNS, 0, 1, CacheType.LINKED_LIST));
 
         System.out.println(result);
     }
@@ -130,7 +129,7 @@ public class BenchmarkTest {
     @Test
     public void getMinCoverageTest(){
 
-        Cache cache = new Cache(100,-1, 3, 0, 0);
+        Cache cache = new Cache(100,-1, 3, 0, 0, CacheType.LINKED_LIST);
 
         ArrayList<Pair<Integer, Integer>> interval1
                 = new ArrayList<>(Arrays.asList(Pair.of(0,10), Pair.of(20,1000), Pair.of(-10, -5)));

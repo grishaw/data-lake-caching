@@ -1,9 +1,17 @@
 package local;
 
 import org.apache.commons.lang3.tuple.Pair;
+import org.tinspin.index.Index;
+import org.tinspin.index.kdtree.KDTree;
+import org.tinspin.index.phtree.PHTreeP;
+import org.tinspin.index.qthypercube.QuadTreeKD;
+import org.tinspin.index.rtree.RTree;
+import org.tinspin.index.rtree.RTreeIterator;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+
+import static local.Benchmark.CacheType.*;
 
 public class Benchmark {
 
@@ -51,21 +59,28 @@ public class Benchmark {
         ArrayList<Long> listWithCacheRemoveMinTimes = new ArrayList<>();
         ArrayList<Long> listWithCacheRemoveMinTimesSummary = new ArrayList<>();
 
+        ArrayList<Long> listWithRTreeCacheTimes = new ArrayList<>();
+        ArrayList<Long> listWithRTreeCacheTimesSummary = new ArrayList<>();
+
         ArrayList<Integer> cacheHitsSummary = new ArrayList<>();
         ArrayList<Integer> cacheRemoveMinHitsSummary = new ArrayList<>();
+        ArrayList<Integer> cacheRTreeHitsSummary = new ArrayList<>();
 
         ArrayList<Long> hitsCoverageAverageSummary = new ArrayList<>();
         ArrayList<Long> hitsRemoveMinCoverageAverageSummary = new ArrayList<>();
+        ArrayList<Long> hitsRTreeAverageSummary = new ArrayList<>();
 
         HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
 
         int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
-        Cache cacheUnlimited = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2);
-        Cache cacheRemoveMin = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2);
+        Cache cacheUnlimited = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, CacheType.LINKED_LIST);
+        Cache cacheRemoveMin = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, CacheType.LINKED_LIST);
+        Cache cacheRTree = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, R_TREE);
 
         int resultNoCache;
         int resultWithCache;
         int resultWithCacheRemoveMin;
+        int resultWithRTreeCache;
 
         for (int i = 1; i <= numOfQueries; i++) {
 
@@ -83,13 +98,19 @@ public class Benchmark {
             resultWithCacheRemoveMin = runQueryWithCache(table, interval, cacheRemoveMin);
             long endWithCacheRemoveMin = System.currentTimeMillis();
 
-            if (resultNoCache != resultWithCache || resultWithCache !=  resultWithCacheRemoveMin){
-                throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache + ", " + resultWithCacheRemoveMin);
+            long startWithRTreeCache = System.currentTimeMillis();
+            resultWithRTreeCache = runQueryWithCache(table, interval, cacheRTree);
+            long endWithRTreeCache = System.currentTimeMillis();
+
+
+            if (resultNoCache != resultWithCache || resultWithCache !=  resultWithCacheRemoveMin || resultWithCacheRemoveMin != resultWithRTreeCache){
+                throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache + ", " + resultWithCacheRemoveMin + ", " + resultWithRTreeCache);
             }
 
             listNoCacheTimes.add(endNoCache - startNoCache);
             listWithCacheTimes.add(endWithCache - startWithCache);
             listWithCacheRemoveMinTimes.add(endWithCacheRemoveMin - startWithCacheRemoveMin);
+            listWithRTreeCacheTimes.add(endWithRTreeCache - startWithRTreeCache);
 
             System.out.println(i + " done");
 
@@ -108,6 +129,10 @@ public class Benchmark {
                 System.out.println("with cache remove min average : " + withCacheRemoveMinAverage);
                 listWithCacheRemoveMinTimesSummary.add(withCacheRemoveMinAverage);
 
+                Long withCacheRTreeAverage = (long) listWithRTreeCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                System.out.println("with cache RTree average : " + withCacheRTreeAverage);
+                listWithRTreeCacheTimesSummary.add(withCacheRTreeAverage);
+
                 Integer hits = cacheUnlimited.hits.isEmpty() ? null : cacheUnlimited.hits.size();
                 System.out.println("hits for unlimited cache total = " + hits);
                 cacheHitsSummary.add(hits);
@@ -116,6 +141,10 @@ public class Benchmark {
                 System.out.println("hits for limited cache total = " + hits);
                 cacheRemoveMinHitsSummary.add(hits);
 
+                hits = cacheRTree.hits.isEmpty() ? null : cacheRTree.hits.size();
+                System.out.println("hits for unlimited R-Tree cache total = " + hits);
+                cacheRTreeHitsSummary.add(hits);
+
                 Long hitsCoverageAverage = cacheUnlimited.hits.isEmpty() ? null : ((long) cacheUnlimited.hits.stream().mapToInt(v -> v).average().getAsDouble());
                 System.out.println("hits unlimited cache coverage average = " +  hitsCoverageAverage);
                 hitsCoverageAverageSummary.add(hitsCoverageAverage);
@@ -123,6 +152,10 @@ public class Benchmark {
                 hitsCoverageAverage = cacheRemoveMin.hits.isEmpty() ? null : ((long) cacheRemoveMin.hits.stream().mapToInt(v -> v).average().getAsDouble());
                 System.out.println("hits limited cache coverage average = " +  hitsCoverageAverage);
                 hitsRemoveMinCoverageAverageSummary.add(hitsCoverageAverage);
+
+                hitsCoverageAverage = cacheRTree.hits.isEmpty() ? null : ((long) cacheRTree.hits.stream().mapToInt(v -> v).average().getAsDouble());
+                System.out.println("hits unlimited R-Tree cache coverage average = " +  hitsCoverageAverage);
+                hitsRTreeAverageSummary.add(hitsCoverageAverage);
 
                 System.gc();
             }
@@ -135,10 +168,13 @@ public class Benchmark {
             System.out.println("no cache average : " + listNoCacheTimesSummary.get(curIndex));
             System.out.println("with cache average : " + listWithCacheTimesSummary.get(curIndex));
             System.out.println("with cache remove min average : " + listWithCacheRemoveMinTimesSummary.get(curIndex));
+            System.out.println("with cache R-Tree average : " + listWithRTreeCacheTimesSummary.get(curIndex));
             System.out.println("hits unlimited cache total : " + cacheHitsSummary.get(curIndex));
             System.out.println("hits limited cache total : " + cacheRemoveMinHitsSummary.get(curIndex));
+            System.out.println("hits unlimited R-Tree cache total : " + cacheRTreeHitsSummary.get(curIndex));
             System.out.println("hits unlimited cache coverage average = " +  hitsCoverageAverageSummary.get(curIndex));
             System.out.println("hits limited cache coverage average = " +  hitsRemoveMinCoverageAverageSummary.get(curIndex));
+            System.out.println("hits unlimited R-Tree cache coverage average = " +  hitsRTreeAverageSummary.get(curIndex));
         }
     }
 
@@ -293,10 +329,28 @@ public class Benchmark {
 
         double maxVolume;
 
-        public Cache(int maxCoverage, int capacity, int numOfColumns, double w1, double w2){
+        Index cacheSpatialIndex;
+
+        CacheType cacheType;
+
+        public Cache(int maxCoverage, int capacity, int numOfColumns, double w1, double w2, CacheType cacheType){
             this.maxCoverage = maxCoverage;
             this.capacity = capacity;
-            cache = new ArrayList<>();
+            this.cacheType = cacheType;
+
+            if (cacheType == CacheType.LINKED_LIST) {
+                cache = new ArrayList<>();
+            }else{
+                if (cacheType == R_TREE){
+                    cacheSpatialIndex = RTree.createRStar(numOfColumns * 2);
+                } else if (cacheType == KD_TREE) {
+                    cacheSpatialIndex = KDTree.create(numOfColumns * 2);
+                } else if (cacheType == QUAD_TREE){
+                    cacheSpatialIndex = QuadTreeKD.create(numOfColumns * 2);
+                } else if (cacheType == PH_TREE){
+                    cacheSpatialIndex = PHTreeP.create(numOfColumns * 2);
+                }
+            }
             hits = new LinkedList<>();
             heap = new PriorityQueue<>();
             maxVolume = getMaxVolume(numOfColumns);
@@ -309,18 +363,40 @@ public class Benchmark {
         }
 
         Set<Integer> getMinCoverage (ArrayList<Pair<Integer, Integer>> queryInterval){
-            Set<Integer> result = null;
-            for (Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>> entry : cache){
-                if (intervalContainsInterval(entry.getLeft(), queryInterval) && (result == null || result.size() > entry.getRight().size())){
-                    result = entry.getRight();
+            if (cacheType == R_TREE){
+                double [] queryMin = getQueryMin (queryInterval.size() * 2);
+                double [] queryMax = mapIntervalToPoint(queryInterval);
+
+                if (queryMin.length != queryMax.length){
+                    throw new IllegalStateException("lengths do not match");
                 }
-            }
 
-            if (result != null){
-                hits.add(result.size());
-            }
+                Set<Integer> result = null;
+                RTreeIterator<Set<Integer>> it = ((RTree)cacheSpatialIndex).queryIntersect(queryMin, queryMax);
+                while (it.hasNext()){
+                    Set<Integer> curSet = it.next().value();
+                    if (result == null || result.size() > curSet.size()){
+                        result = curSet;
+                    }
+                }
+                if (result != null) {
+                    hits.add(result.size());
+                }
+                return result;
+            }else {
+                Set<Integer> result = null;
+                for (Pair<ArrayList<Pair<Integer, Integer>>, Set<Integer>> entry : cache) {
+                    if (intervalContainsInterval(entry.getLeft(), queryInterval) && (result == null || result.size() > entry.getRight().size())) {
+                        result = entry.getRight();
+                    }
+                }
 
-            return result;
+                if (result != null) {
+                    hits.add(result.size());
+                }
+
+                return result;
+            }
         }
 
         void put(ArrayList<Pair<Integer, Integer>> interval, Set<Integer> coverage){
@@ -329,7 +405,11 @@ public class Benchmark {
 
                 // unlimited
                 if (capacity == UNLIMITED_CACHE_CAPACITY){
-                    cache.add(Pair.of(interval, coverage));
+                    if (this.cacheType == R_TREE) {
+                        ((RTree) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
+                    }else {
+                        cache.add(Pair.of(interval, coverage));
+                    }
                 } else {
 
                     double gFunctionResult = gFunction(interval, coverage.size());
@@ -378,4 +458,31 @@ public class Benchmark {
         return intervalVolume(interval);
     }
 
+    enum CacheType{
+        LINKED_LIST,
+        R_TREE,
+        KD_TREE,
+        QUAD_TREE,
+        PH_TREE
+    }
+
+    static double[] mapIntervalToPoint(ArrayList<Pair<Integer, Integer>> interval){
+        double [] result = new double[interval.size() * 2];
+
+        for (int i=0; i< interval.size(); i++){
+            result[i] = interval.get(i).getLeft();
+        }
+
+        for (int i=0; i< interval.size(); i++){
+            result[interval.size() + i] = (-1) * interval.get(i).getRight();
+        }
+
+        return result;
+    }
+
+    static double [] getQueryMin(int numOfColumns){
+        double [] result = new double[numOfColumns];
+        Arrays.fill(result, MIN_VALUE);
+        return result;
+    }
 }
