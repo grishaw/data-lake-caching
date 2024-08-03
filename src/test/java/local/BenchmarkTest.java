@@ -12,7 +12,7 @@ public class BenchmarkTest {
 
     @Test
     public void runBenchmarkTest(){
-        //runBenchmark(10, 1_000_000, 100_000, 10_000, 1000, 100, 1, 0);
+        runBenchmark(5, 100_000, 30_000, 100_000, 50, 5, 1, 0);
     }
 
     @Test

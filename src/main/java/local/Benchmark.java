@@ -2,6 +2,7 @@ package local;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.tinspin.index.Index;
+import org.tinspin.index.kdtree.KDIterator;
 import org.tinspin.index.kdtree.KDTree;
 import org.tinspin.index.phtree.PHTreeP;
 import org.tinspin.index.qthypercube.QuadTreeKD;
@@ -73,9 +74,9 @@ public class Benchmark {
         HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
 
         int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
-        Cache cacheUnlimited = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, CacheType.LINKED_LIST);
-        Cache cacheRemoveMin = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, CacheType.LINKED_LIST);
-        Cache cacheRTree = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, R_TREE);
+        Cache cacheUnlimited = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, LINKED_LIST);
+        Cache cacheRemoveMin = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, LINKED_LIST);
+        Cache cacheRTree = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, KD_TREE);
 
         int resultNoCache;
         int resultWithCache;
@@ -363,7 +364,7 @@ public class Benchmark {
         }
 
         Set<Integer> getMinCoverage (ArrayList<Pair<Integer, Integer>> queryInterval){
-            if (cacheType == R_TREE){
+            if (cacheType == R_TREE || cacheType == KD_TREE){
                 double [] queryMin = getQueryMin (queryInterval.size() * 2);
                 double [] queryMax = mapIntervalToPoint(queryInterval);
 
@@ -372,9 +373,15 @@ public class Benchmark {
                 }
 
                 Set<Integer> result = null;
-                RTreeIterator<Set<Integer>> it = ((RTree)cacheSpatialIndex).queryIntersect(queryMin, queryMax);
+                Iterator <Set<Integer>> it = null;
+
+                if (cacheType == R_TREE) {
+                   it = ((RTree) cacheSpatialIndex).queryIntersect(queryMin, queryMax);
+                }else if (cacheType == KD_TREE){
+                    it = ((KDTree) cacheSpatialIndex).query(queryMin, queryMax);
+                }
                 while (it.hasNext()){
-                    Set<Integer> curSet = it.next().value();
+                    Set<Integer> curSet = cacheType == R_TREE ? (Set<Integer>)((RTreeIterator)it).next().value() : (Set<Integer>)((KDIterator)it).next().value();
                     if (result == null || result.size() > curSet.size()){
                         result = curSet;
                     }
@@ -407,7 +414,9 @@ public class Benchmark {
                 if (capacity == UNLIMITED_CACHE_CAPACITY){
                     if (this.cacheType == R_TREE) {
                         ((RTree) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
-                    }else {
+                    } else if (cacheType == KD_TREE) {
+                        ((KDTree) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
+                    } else {
                         cache.add(Pair.of(interval, coverage));
                     }
                 } else {
