@@ -31,57 +31,34 @@ public class Benchmark {
         int cacheCapacity = Integer.parseInt(args[5]);
         double w1 = Double.parseDouble(args[6]);
         double w2 = Double.parseDouble(args[7]);
+        CacheType cacheType =  CacheType.valueOf(args[8]);
 
         long start = System.currentTimeMillis();
-        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, w1, w2);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, w1, w2, cacheType);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
-    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum, int cacheCapacity, double w1, double w2){
+    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum, int cacheCapacity, double w1, double w2, CacheType cacheType){
 
-        //TODO
-        // - organize the flow to be simple and readable
-        // - add relevant classes - for table, interval, record (don't use apache pair)
-        // - try different params
-        // - add cache data structure type (basic/enhanced/spatial type) and cache replacement type (unlimited, policy type)
-        // - add missing tests / refactor existing
-        // - add ReadMe, squash commits
-        // - consider hashmap for cache instead of list (to avoid duplicate intervals)
-        // - consider running on AWS
+        int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
 
-        ArrayList<Long> listNoCacheTimes = new ArrayList<>();
-        ArrayList<Long> listNoCacheTimesSummary = new ArrayList<>();
+        // baseline
+        ArrayList<Long> listNoCacheTimes = new ArrayList<>(), listNoCacheTimesAvgSummary = new ArrayList<>(), listNoCacheTimesTotalSummary = new ArrayList<>();
 
-        ArrayList<Long> listWithCacheTimes = new ArrayList<>();
-        ArrayList<Long> listWithCacheTimesSummary = new ArrayList<>();
+        //TODO - add predicate caching (hashmap of interval and coverage)
 
-        ArrayList<Long> listWithCacheRemoveMinTimes = new ArrayList<>();
-        ArrayList<Long> listWithCacheRemoveMinTimesSummary = new ArrayList<>();
-
-        ArrayList<Long> listWithRTreeCacheTimes = new ArrayList<>();
-        ArrayList<Long> listWithRTreeCacheTimesSummary = new ArrayList<>();
-
-        ArrayList<Integer> cacheHitsSummary = new ArrayList<>();
-        ArrayList<Integer> cacheRemoveMinHitsSummary = new ArrayList<>();
-        ArrayList<Integer> cacheRTreeHitsSummary = new ArrayList<>();
-
-        ArrayList<Long> hitsCoverageAverageSummary = new ArrayList<>();
-        ArrayList<Long> hitsRemoveMinCoverageAverageSummary = new ArrayList<>();
-        ArrayList<Long> hitsRTreeAverageSummary = new ArrayList<>();
+        // our approach
+        ArrayList<Long> listOurCacheTimes = new ArrayList<>(), listOurCacheTimesAvgSummary = new ArrayList<>(),
+                listOurCacheTimesTotalSummary = new ArrayList<>(), cacheHitsSummary = new ArrayList<>();
 
         HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
 
-        int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
-        Cache cacheUnlimited = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, LINKED_LIST);
-        Cache cacheRemoveMin = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, LINKED_LIST);
-        Cache cacheRTree = new Cache(maxCoverageForCache, UNLIMITED_CACHE_CAPACITY, numOfColumns, w1, w2, KD_TREE);
+        Cache cache = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, cacheType);
 
         int resultNoCache;
         int resultWithCache;
-        int resultWithCacheRemoveMin;
-        int resultWithRTreeCache;
 
         for (int i = 1; i <= numOfQueries; i++) {
 
@@ -92,72 +69,40 @@ public class Benchmark {
             long endNoCache = System.currentTimeMillis();
 
             long startWithCache = System.currentTimeMillis();
-            resultWithCache = runQueryWithCache(table, interval, cacheUnlimited);
+            resultWithCache = runQueryWithCache(table, interval, cache);
             long endWithCache = System.currentTimeMillis();
 
-            long startWithCacheRemoveMin = System.currentTimeMillis();
-            resultWithCacheRemoveMin = runQueryWithCache(table, interval, cacheRemoveMin);
-            long endWithCacheRemoveMin = System.currentTimeMillis();
-
-            long startWithRTreeCache = System.currentTimeMillis();
-            resultWithRTreeCache = runQueryWithCache(table, interval, cacheRTree);
-            long endWithRTreeCache = System.currentTimeMillis();
-
-
-            if (resultNoCache != resultWithCache || resultWithCache !=  resultWithCacheRemoveMin || resultWithCacheRemoveMin != resultWithRTreeCache){
-                throw new IllegalStateException("results do not match : " + resultNoCache + ", " + resultWithCache + ", " + resultWithCacheRemoveMin + ", " + resultWithRTreeCache);
+            if (resultNoCache != resultWithCache){
+                throw new IllegalStateException("results do not match !");
             }
 
             listNoCacheTimes.add(endNoCache - startNoCache);
-            listWithCacheTimes.add(endWithCache - startWithCache);
-            listWithCacheRemoveMinTimes.add(endWithCacheRemoveMin - startWithCacheRemoveMin);
-            listWithRTreeCacheTimes.add(endWithRTreeCache - startWithRTreeCache);
-
-            System.out.println(i + " done");
+            listOurCacheTimes.add(endWithCache - startWithCache);
 
             if (i>0 && (i % checkpointNum == 0)){
                 System.out.println("num of queries : " + i);
+                System.out.println();
 
                 Long noCacheAverage = (long) listNoCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                Long noCacheTotal = listNoCacheTimes.stream().mapToLong(v -> v).sum();
                 System.out.println("no cache average : " + noCacheAverage);
-                listNoCacheTimesSummary.add(noCacheAverage);
+                System.out.println("no cache total : " + noCacheTotal);
+                listNoCacheTimesAvgSummary.add(noCacheAverage);
+                listNoCacheTimesTotalSummary.add(noCacheTotal);
 
-                Long withCacheAverage = (long) listWithCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                System.out.println("------------------------");
+
+                Long withCacheAverage = (long) listOurCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                Long withCacheTotal = listOurCacheTimes.stream().mapToLong(v -> v).sum();
+                Long hits = (long) (cache.hits.isEmpty() ? 0 : cache.hits.size());
                 System.out.println("with cache average : " + withCacheAverage);
-                listWithCacheTimesSummary.add(withCacheAverage);
-
-                Long withCacheRemoveMinAverage = (long) listWithCacheRemoveMinTimes.stream().mapToLong(v -> v).average().getAsDouble();
-                System.out.println("with cache remove min average : " + withCacheRemoveMinAverage);
-                listWithCacheRemoveMinTimesSummary.add(withCacheRemoveMinAverage);
-
-                Long withCacheRTreeAverage = (long) listWithRTreeCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
-                System.out.println("with cache RTree average : " + withCacheRTreeAverage);
-                listWithRTreeCacheTimesSummary.add(withCacheRTreeAverage);
-
-                Integer hits = cacheUnlimited.hits.isEmpty() ? null : cacheUnlimited.hits.size();
-                System.out.println("hits for unlimited cache total = " + hits);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+                listOurCacheTimesAvgSummary.add(withCacheAverage);
+                listOurCacheTimesTotalSummary.add(withCacheTotal);
                 cacheHitsSummary.add(hits);
 
-                hits = cacheRemoveMin.hits.isEmpty() ? null : cacheRemoveMin.hits.size();
-                System.out.println("hits for limited cache total = " + hits);
-                cacheRemoveMinHitsSummary.add(hits);
-
-                hits = cacheRTree.hits.isEmpty() ? null : cacheRTree.hits.size();
-                System.out.println("hits for unlimited R-Tree cache total = " + hits);
-                cacheRTreeHitsSummary.add(hits);
-
-                Long hitsCoverageAverage = cacheUnlimited.hits.isEmpty() ? null : ((long) cacheUnlimited.hits.stream().mapToInt(v -> v).average().getAsDouble());
-                System.out.println("hits unlimited cache coverage average = " +  hitsCoverageAverage);
-                hitsCoverageAverageSummary.add(hitsCoverageAverage);
-
-                hitsCoverageAverage = cacheRemoveMin.hits.isEmpty() ? null : ((long) cacheRemoveMin.hits.stream().mapToInt(v -> v).average().getAsDouble());
-                System.out.println("hits limited cache coverage average = " +  hitsCoverageAverage);
-                hitsRemoveMinCoverageAverageSummary.add(hitsCoverageAverage);
-
-                hitsCoverageAverage = cacheRTree.hits.isEmpty() ? null : ((long) cacheRTree.hits.stream().mapToInt(v -> v).average().getAsDouble());
-                System.out.println("hits unlimited R-Tree cache coverage average = " +  hitsCoverageAverage);
-                hitsRTreeAverageSummary.add(hitsCoverageAverage);
-
+                System.out.println("****************************");
                 System.gc();
             }
         }
@@ -166,16 +111,11 @@ public class Benchmark {
             int curIndex = i/checkpointNum - 1;
             System.out.println("---------------------------------");
             System.out.println(i);
-            System.out.println("no cache average : " + listNoCacheTimesSummary.get(curIndex));
-            System.out.println("with cache average : " + listWithCacheTimesSummary.get(curIndex));
-            System.out.println("with cache remove min average : " + listWithCacheRemoveMinTimesSummary.get(curIndex));
-            System.out.println("with cache R-Tree average : " + listWithRTreeCacheTimesSummary.get(curIndex));
-            System.out.println("hits unlimited cache total : " + cacheHitsSummary.get(curIndex));
-            System.out.println("hits limited cache total : " + cacheRemoveMinHitsSummary.get(curIndex));
-            System.out.println("hits unlimited R-Tree cache total : " + cacheRTreeHitsSummary.get(curIndex));
-            System.out.println("hits unlimited cache coverage average = " +  hitsCoverageAverageSummary.get(curIndex));
-            System.out.println("hits limited cache coverage average = " +  hitsRemoveMinCoverageAverageSummary.get(curIndex));
-            System.out.println("hits unlimited R-Tree cache coverage average = " +  hitsRTreeAverageSummary.get(curIndex));
+            System.out.println("no cache average : " + listNoCacheTimesAvgSummary.get(curIndex));
+            System.out.println("no cache total : " + listNoCacheTimesTotalSummary.get(curIndex));
+            System.out.println("with cache average : " + listOurCacheTimesAvgSummary.get(curIndex));
+            System.out.println("with cache total : " + listOurCacheTimesTotalSummary.get(curIndex));
+            System.out.println("total cache hits : " + cacheHitsSummary.get(curIndex));
         }
     }
 
@@ -257,7 +197,6 @@ public class Benchmark {
     }
 
     // intervals
-
     static ArrayList<Pair<Integer, Integer>> generateInterval (int totalTerms, double percentageOfNonEmptyTerms){
         ArrayList<Pair<Integer, Integer>> result = new ArrayList<>(totalTerms);
 
