@@ -105,11 +105,9 @@ public class Benchmark {
                 }
             }
         }else if (mode == TestMode.CACHE_POLICY){
-            cachePoliciesBenchmark(numOfColumns, numOfRecords, numOfRecords, numOfQueries, checkpointNum, cacheCapacity, cacheType);
+            cachePoliciesBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, cacheType);
         }else if (mode == TestMode.SPATIAL_INDEXES){
-            // test different spatial indexes
-        }else if (mode == TestMode.MIXED){
-            // test both caching policies and spatial indexes
+            spatialIndexBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity);
         }
     }
 
@@ -129,7 +127,7 @@ public class Benchmark {
         Cache cache7 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0.9, 0.1, cacheType);
 
         // baseline
-        ArrayList<Long> listNoCacheTimes = new ArrayList<>(), listNoCacheTimesAvgSummary = new ArrayList<>(), listNoCacheTimesTotalSummary = new ArrayList<>();
+        ArrayList<Long> listNoCacheTimes = new ArrayList<>();
 
         //TODO - add predicate caching (hashmap of interval and coverage)
 
@@ -157,34 +155,58 @@ public class Benchmark {
             }
 
             start = System.currentTimeMillis();
-            runQueryWithCache(table, interval, cache2);
+            resultWithCache = runQueryWithCache(table, interval, cache2);
             end = System.currentTimeMillis();
             listOurCacheTimes2.add(end - start);
 
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
             start = System.currentTimeMillis();
-            runQueryWithCache(table, interval, cache3);
+            resultWithCache = runQueryWithCache(table, interval, cache3);
             end = System.currentTimeMillis();
             listOurCacheTimes3.add(end - start);
 
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
             start = System.currentTimeMillis();
-            runQueryWithCache(table, interval, cache4);
+            resultWithCache = runQueryWithCache(table, interval, cache4);
             end = System.currentTimeMillis();
             listOurCacheTimes4.add(end - start);
 
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
             start = System.currentTimeMillis();
-            runQueryWithCache(table, interval, cache5);
+            resultWithCache = runQueryWithCache(table, interval, cache5);
             end = System.currentTimeMillis();
             listOurCacheTimes5.add(end - start);
 
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
             start = System.currentTimeMillis();
-            runQueryWithCache(table, interval, cache6);
+            resultWithCache = runQueryWithCache(table, interval, cache6);
             end = System.currentTimeMillis();
             listOurCacheTimes6.add(end - start);
 
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
             start = System.currentTimeMillis();
-            runQueryWithCache(table, interval, cache7);
+            resultWithCache = runQueryWithCache(table, interval, cache7);
             end = System.currentTimeMillis();
             listOurCacheTimes7.add(end - start);
+
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
 
             if (i > 0 && (i % checkpointNum == 0)) {
                 System.out.println("num of queries : " + i);
@@ -194,12 +216,10 @@ public class Benchmark {
                 Long noCacheTotal = listNoCacheTimes.stream().mapToLong(v -> v).sum();
                 System.out.println("no cache average : " + noCacheAverage);
                 System.out.println("no cache total : " + noCacheTotal);
-                listNoCacheTimesAvgSummary.add(noCacheAverage);
-                listNoCacheTimesTotalSummary.add(noCacheTotal);
 
                 System.out.println("------------------------");
 
-                System.out.println(" cache 1");
+                System.out.println(" cache 1 - w1 = 1, w2 = 0");
                 Long withCacheAverage = (long) listOurCacheTimes1.stream().mapToLong(v -> v).average().getAsDouble();
                 Long withCacheTotal = listOurCacheTimes1.stream().mapToLong(v -> v).sum();
                 Long hits = (long) (cache1.hits.isEmpty() ? 0 : cache1.hits.size());
@@ -207,7 +227,7 @@ public class Benchmark {
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
 
-                System.out.println(" cache 2");
+                System.out.println(" cache 2 - w1 = 0, w2 = 1");
                 withCacheAverage = (long) listOurCacheTimes2.stream().mapToLong(v -> v).average().getAsDouble();
                 withCacheTotal = listOurCacheTimes2.stream().mapToLong(v -> v).sum();
                 hits = (long) (cache2.hits.isEmpty() ? 0 : cache2.hits.size());
@@ -215,7 +235,7 @@ public class Benchmark {
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
 
-                System.out.println(" cache 3");
+                System.out.println(" cache 3 - w1 = 0.5, w2 = 0.5");
                 withCacheAverage = (long) listOurCacheTimes3.stream().mapToLong(v -> v).average().getAsDouble();
                 withCacheTotal = listOurCacheTimes3.stream().mapToLong(v -> v).sum();
                 hits = (long) (cache3.hits.isEmpty() ? 0 : cache3.hits.size());
@@ -223,7 +243,7 @@ public class Benchmark {
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
 
-                System.out.println(" cache 4");
+                System.out.println(" cache 4 - w1 = 0.01, w2 = 0.99");
                 withCacheAverage = (long) listOurCacheTimes4.stream().mapToLong(v -> v).average().getAsDouble();
                 withCacheTotal = listOurCacheTimes4.stream().mapToLong(v -> v).sum();
                 hits = (long) (cache4.hits.isEmpty() ? 0 : cache4.hits.size());
@@ -231,7 +251,7 @@ public class Benchmark {
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
 
-                System.out.println(" cache 5");
+                System.out.println(" cache 5 - w1 = 0.99, w2 = 0.01");
                 withCacheAverage = (long) listOurCacheTimes5.stream().mapToLong(v -> v).average().getAsDouble();
                 withCacheTotal = listOurCacheTimes5.stream().mapToLong(v -> v).sum();
                 hits = (long) (cache5.hits.isEmpty() ? 0 : cache5.hits.size());
@@ -239,7 +259,7 @@ public class Benchmark {
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
 
-                System.out.println(" cache 6");
+                System.out.println(" cache 6 - w1 = 0.1, w2 = 0.9");
                 withCacheAverage = (long) listOurCacheTimes6.stream().mapToLong(v -> v).average().getAsDouble();
                 withCacheTotal = listOurCacheTimes6.stream().mapToLong(v -> v).sum();
                 hits = (long) (cache6.hits.isEmpty() ? 0 : cache6.hits.size());
@@ -247,7 +267,7 @@ public class Benchmark {
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
 
-                System.out.println(" cache 7");
+                System.out.println(" cache 7 - w1 = 0.9, w2 = 0.1");
                 withCacheAverage = (long) listOurCacheTimes7.stream().mapToLong(v -> v).average().getAsDouble();
                 withCacheTotal = listOurCacheTimes7.stream().mapToLong(v -> v).sum();
                 hits = (long) (cache7.hits.isEmpty() ? 0 : cache7.hits.size());
@@ -259,7 +279,146 @@ public class Benchmark {
                 System.gc();
             }
         }
+    }
 
+    static void spatialIndexBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum,
+                                       int cacheCapacity){
+
+        int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
+
+        HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
+
+        double w1, w2;
+        if (cacheCapacity != UNLIMITED_CACHE_CAPACITY){
+            w1 = 1; w2 = 0;
+        }else{
+            w1 = w2 = 0;
+        }
+
+        Cache cache1 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, LINKED_LIST);
+        Cache cache2 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, R_TREE);
+        Cache cache3 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, QUAD_TREE);
+        Cache cache4 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, KD_TREE);
+        Cache cache5 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, PH_TREE);
+
+        // baseline
+        ArrayList<Long> listNoCacheTimes = new ArrayList<>();
+
+        //TODO - add predicate caching (hashmap of interval and coverage)
+
+        // our approach
+        ArrayList<Long> listOurCacheTimes1 = new ArrayList<>(), listOurCacheTimes2 = new ArrayList<>(), listOurCacheTimes3 = new ArrayList<>(),
+                listOurCacheTimes4 = new ArrayList<>(), listOurCacheTimes5 = new ArrayList<>();
+
+        for (int i = 1; i <= numOfQueries; i++) {
+
+            ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
+
+            long start = System.currentTimeMillis();
+            int resultNoCache = runQueryWithNoCache(table, interval);
+            long end = System.currentTimeMillis();
+            listNoCacheTimes.add(end - start);
+
+            start = System.currentTimeMillis();
+            int resultWithCache = runQueryWithCache(table, interval, cache1);
+            end = System.currentTimeMillis();
+            listOurCacheTimes1.add(end - start);
+
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
+            start = System.currentTimeMillis();
+            resultWithCache = runQueryWithCache(table, interval, cache2);
+            end = System.currentTimeMillis();
+            listOurCacheTimes2.add(end - start);
+
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
+            start = System.currentTimeMillis();
+            resultWithCache = runQueryWithCache(table, interval, cache3);
+            end = System.currentTimeMillis();
+            listOurCacheTimes3.add(end - start);
+
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
+            start = System.currentTimeMillis();
+            resultWithCache = runQueryWithCache(table, interval, cache4);
+            end = System.currentTimeMillis();
+            listOurCacheTimes4.add(end - start);
+
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
+            start = System.currentTimeMillis();
+            resultWithCache = runQueryWithCache(table, interval, cache5);
+            end = System.currentTimeMillis();
+            listOurCacheTimes5.add(end - start);
+
+            if (resultNoCache != resultWithCache) {
+                throw new IllegalStateException("results do not match !");
+            }
+
+            if (i > 0 && (i % checkpointNum == 0)) {
+                System.out.println("num of queries : " + i);
+                System.out.println();
+
+                Long noCacheAverage = (long) listNoCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                Long noCacheTotal = listNoCacheTimes.stream().mapToLong(v -> v).sum();
+                System.out.println("no cache average : " + noCacheAverage);
+                System.out.println("no cache total : " + noCacheTotal);
+
+                System.out.println("------------------------");
+
+                System.out.println(" cache 1 - Linked List");
+                Long withCacheAverage = (long) listOurCacheTimes1.stream().mapToLong(v -> v).average().getAsDouble();
+                Long withCacheTotal = listOurCacheTimes1.stream().mapToLong(v -> v).sum();
+                Long hits = (long) (cache1.hits.isEmpty() ? 0 : cache1.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 2 - R-Tree");
+                withCacheAverage = (long) listOurCacheTimes2.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes2.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache2.hits.isEmpty() ? 0 : cache2.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 3 - Quad-Tree");
+                withCacheAverage = (long) listOurCacheTimes3.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes3.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache3.hits.isEmpty() ? 0 : cache3.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 4 - KD-TRee");
+                withCacheAverage = (long) listOurCacheTimes4.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes4.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache4.hits.isEmpty() ? 0 : cache4.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 5 - PH-Tree");
+                withCacheAverage = (long) listOurCacheTimes5.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes5.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache5.hits.isEmpty() ? 0 : cache5.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println("****************************");
+                System.gc();
+            }
+        }
     }
 
     // table
@@ -446,7 +605,7 @@ public class Benchmark {
         }
 
         Set<Integer> getMinCoverage (ArrayList<Pair<Integer, Integer>> queryInterval){
-            if (cacheType == R_TREE || cacheType == KD_TREE){
+            if (cacheType == R_TREE || cacheType == KD_TREE || cacheType == QUAD_TREE || cacheType == PH_TREE){
                 double [] queryMin = getQueryMin (queryInterval.size() * 2);
                 double [] queryMax = mapIntervalToPoint(queryInterval);
 
@@ -461,9 +620,24 @@ public class Benchmark {
                    it = ((RTree) cacheSpatialIndex).queryIntersect(queryMin, queryMax);
                 }else if (cacheType == KD_TREE){
                     it = ((KDTree) cacheSpatialIndex).query(queryMin, queryMax);
+                }else if (cacheType == QUAD_TREE){
+                    it = ((QuadTreeKD) cacheSpatialIndex).query(queryMin, queryMax);
+                }else if (cacheType == PH_TREE){
+                    it = ((PHTreeP) cacheSpatialIndex).query(queryMin, queryMax);
                 }
+
                 while (it.hasNext()){
-                    Set<Integer> curSet = cacheType == R_TREE ? (Set<Integer>)((RTreeIterator)it).next().value() : (Set<Integer>)((KDIterator)it).next().value();
+                    Set<Integer> curSet = null;
+                    if (cacheType == R_TREE) {
+                        curSet = (Set<Integer>)((RTreeIterator)it).next().value();
+                    }else if (cacheType == KD_TREE){
+                        curSet = (Set<Integer>)((KDIterator)it).next().value();
+                    }else if (cacheType == QUAD_TREE){
+                        curSet = ((Index.PointEntry<Set<Integer>>)((Index.PointIterator)it).next()).value();
+                    }else if (cacheType == PH_TREE){
+                        curSet = ((Index.PointEntry<Set<Integer>>)((Index.PointIterator)it).next()).value();
+                    }
+
                     if (result == null || result.size() > curSet.size()){
                         result = curSet;
                     }
@@ -498,7 +672,12 @@ public class Benchmark {
                         ((RTree) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
                     } else if (cacheType == KD_TREE) {
                         ((KDTree) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
-                    } else {
+                    } else if (cacheType == QUAD_TREE) {
+                        ((QuadTreeKD) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
+                    } else if (cacheType == PH_TREE) {
+                        ((PHTreeP) cacheSpatialIndex).insert(mapIntervalToPoint(interval), coverage);
+                    }
+                    else {
                         cache.add(Pair.of(interval, coverage));
                     }
                 } else {
@@ -580,7 +759,6 @@ public class Benchmark {
     enum TestMode{
         SIMPLE,
         CACHE_POLICY,
-        SPATIAL_INDEXES,
-        MIXED
+        SPATIAL_INDEXES
     }
 }

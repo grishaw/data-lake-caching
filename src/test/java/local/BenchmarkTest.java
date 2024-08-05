@@ -12,8 +12,8 @@ public class BenchmarkTest {
 
     @Test
     public void runBenchmarkTest(){
-        runBenchmark(10, 100_000, 20_000, 2000, 100,
-                100, 0, 1, CacheType.LINKED_LIST, TestMode.CACHE_POLICY);
+        runBenchmark(10, 100_000, 20_000, 100, 50,
+                UNLIMITED_CACHE_CAPACITY, 0, 1, CacheType.LINKED_LIST, TestMode.SIMPLE);
     }
 
     @Test
