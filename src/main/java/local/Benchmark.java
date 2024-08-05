@@ -51,8 +51,6 @@ public class Benchmark {
             // baseline
             ArrayList<Long> listNoCacheTimes = new ArrayList<>();
 
-            //TODO - add predicate caching (hashmap of interval and coverage)
-
             // our approach
             ArrayList<Long> listOurCacheTimes = new ArrayList<>();
 
