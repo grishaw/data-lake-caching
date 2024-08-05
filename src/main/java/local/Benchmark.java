@@ -32,17 +32,101 @@ public class Benchmark {
         double w1 = Double.parseDouble(args[6]);
         double w2 = Double.parseDouble(args[7]);
         CacheType cacheType =  CacheType.valueOf(args[8]);
+        TestMode testMode =  TestMode.valueOf(args[8]);
 
         long start = System.currentTimeMillis();
-        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, w1, w2, cacheType);
+        runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, w1, w2, cacheType, testMode);
         long end = System.currentTimeMillis();
 
         System.out.println("benchmark took : " + (end-start) / 1000 / 60 + " minutes");
     }
 
-    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum, int cacheCapacity, double w1, double w2, CacheType cacheType){
+    static void runBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum,
+                             int cacheCapacity, double w1, double w2, CacheType cacheType, TestMode mode){
+
+        if (mode == TestMode.SIMPLE) {
+
+            int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
+
+            // baseline
+            ArrayList<Long> listNoCacheTimes = new ArrayList<>();
+
+            //TODO - add predicate caching (hashmap of interval and coverage)
+
+            // our approach
+            ArrayList<Long> listOurCacheTimes = new ArrayList<>();
+
+            HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
+
+            Cache cache = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, cacheType);
+
+            int resultNoCache;
+            int resultWithCache;
+
+            for (int i = 1; i <= numOfQueries; i++) {
+
+                ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
+
+                long startNoCache = System.currentTimeMillis();
+                resultNoCache = runQueryWithNoCache(table, interval);
+                long endNoCache = System.currentTimeMillis();
+
+                long startWithCache = System.currentTimeMillis();
+                resultWithCache = runQueryWithCache(table, interval, cache);
+                long endWithCache = System.currentTimeMillis();
+
+                if (resultNoCache != resultWithCache) {
+                    throw new IllegalStateException("results do not match !");
+                }
+
+                listNoCacheTimes.add(endNoCache - startNoCache);
+                listOurCacheTimes.add(endWithCache - startWithCache);
+
+                if (i > 0 && (i % checkpointNum == 0)) {
+                    System.out.println("num of queries : " + i);
+                    System.out.println();
+
+                    Long noCacheAverage = (long) listNoCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                    Long noCacheTotal = listNoCacheTimes.stream().mapToLong(v -> v).sum();
+                    System.out.println("no cache average : " + noCacheAverage);
+                    System.out.println("no cache total : " + noCacheTotal);
+
+                    System.out.println("------------------------");
+
+                    Long withCacheAverage = (long) listOurCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
+                    Long withCacheTotal = listOurCacheTimes.stream().mapToLong(v -> v).sum();
+                    Long hits = (long) (cache.hits.isEmpty() ? 0 : cache.hits.size());
+                    System.out.println("with cache average : " + withCacheAverage);
+                    System.out.println("with cache total : " + withCacheTotal);
+                    System.out.println("total cache hits : " + hits);
+
+                    System.out.println("****************************");
+                    System.gc();
+                }
+            }
+        }else if (mode == TestMode.CACHE_POLICY){
+            cachePoliciesBenchmark(numOfColumns, numOfRecords, numOfRecords, numOfQueries, checkpointNum, cacheCapacity, cacheType);
+        }else if (mode == TestMode.SPATIAL_INDEXES){
+            // test different spatial indexes
+        }else if (mode == TestMode.MIXED){
+            // test both caching policies and spatial indexes
+        }
+    }
+
+    static void cachePoliciesBenchmark(int numOfColumns, int numOfRecords, int numOfFiles, int numOfQueries, int checkpointNum,
+                                       int cacheCapacity, CacheType cacheType){
 
         int maxCoverageForCache = (int) Math.round(numOfFiles * MAX_FILES_FRACTION_FOR_CACHE);
+
+        HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
+
+        Cache cache1 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 1, 0, cacheType);
+        Cache cache2 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0, 1, cacheType);
+        Cache cache3 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0.5, 0.5, cacheType);
+        Cache cache4 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0.01, 0.99, cacheType);
+        Cache cache5 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0.99, 0.01, cacheType);
+        Cache cache6 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0.1, 0.9, cacheType);
+        Cache cache7 = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, 0.9, 0.1, cacheType);
 
         // baseline
         ArrayList<Long> listNoCacheTimes = new ArrayList<>(), listNoCacheTimesAvgSummary = new ArrayList<>(), listNoCacheTimesTotalSummary = new ArrayList<>();
@@ -50,36 +134,59 @@ public class Benchmark {
         //TODO - add predicate caching (hashmap of interval and coverage)
 
         // our approach
-        ArrayList<Long> listOurCacheTimes = new ArrayList<>(), listOurCacheTimesAvgSummary = new ArrayList<>(),
-                listOurCacheTimesTotalSummary = new ArrayList<>(), cacheHitsSummary = new ArrayList<>();
-
-        HashMap<Integer, List<ArrayList<Integer>>> table = createRandomTable(numOfColumns, numOfRecords, numOfFiles);
-
-        Cache cache = new Cache(maxCoverageForCache, cacheCapacity, numOfColumns, w1, w2, cacheType);
-
-        int resultNoCache;
-        int resultWithCache;
+        ArrayList<Long> listOurCacheTimes1 = new ArrayList<>(), listOurCacheTimes2 = new ArrayList<>(), listOurCacheTimes3 = new ArrayList<>(),
+                listOurCacheTimes4 = new ArrayList<>(), listOurCacheTimes5 = new ArrayList<>(),
+                listOurCacheTimes6 = new ArrayList<>(), listOurCacheTimes7 = new ArrayList<>();
 
         for (int i = 1; i <= numOfQueries; i++) {
 
             ArrayList<Pair<Integer, Integer>> interval = generateInterval(numOfColumns, ThreadLocalRandom.current().nextDouble());
 
-            long startNoCache = System.currentTimeMillis();
-            resultNoCache = runQueryWithNoCache(table, interval);
-            long endNoCache = System.currentTimeMillis();
+            long start = System.currentTimeMillis();
+            int resultNoCache = runQueryWithNoCache(table, interval);
+            long end = System.currentTimeMillis();
+            listNoCacheTimes.add(end - start);
 
-            long startWithCache = System.currentTimeMillis();
-            resultWithCache = runQueryWithCache(table, interval, cache);
-            long endWithCache = System.currentTimeMillis();
+            start = System.currentTimeMillis();
+            int resultWithCache = runQueryWithCache(table, interval, cache1);
+            end = System.currentTimeMillis();
+            listOurCacheTimes1.add(end - start);
 
-            if (resultNoCache != resultWithCache){
+            if (resultNoCache != resultWithCache) {
                 throw new IllegalStateException("results do not match !");
             }
 
-            listNoCacheTimes.add(endNoCache - startNoCache);
-            listOurCacheTimes.add(endWithCache - startWithCache);
+            start = System.currentTimeMillis();
+            runQueryWithCache(table, interval, cache2);
+            end = System.currentTimeMillis();
+            listOurCacheTimes2.add(end - start);
 
-            if (i>0 && (i % checkpointNum == 0)){
+            start = System.currentTimeMillis();
+            runQueryWithCache(table, interval, cache3);
+            end = System.currentTimeMillis();
+            listOurCacheTimes3.add(end - start);
+
+            start = System.currentTimeMillis();
+            runQueryWithCache(table, interval, cache4);
+            end = System.currentTimeMillis();
+            listOurCacheTimes4.add(end - start);
+
+            start = System.currentTimeMillis();
+            runQueryWithCache(table, interval, cache5);
+            end = System.currentTimeMillis();
+            listOurCacheTimes5.add(end - start);
+
+            start = System.currentTimeMillis();
+            runQueryWithCache(table, interval, cache6);
+            end = System.currentTimeMillis();
+            listOurCacheTimes6.add(end - start);
+
+            start = System.currentTimeMillis();
+            runQueryWithCache(table, interval, cache7);
+            end = System.currentTimeMillis();
+            listOurCacheTimes7.add(end - start);
+
+            if (i > 0 && (i % checkpointNum == 0)) {
                 System.out.println("num of queries : " + i);
                 System.out.println();
 
@@ -92,31 +199,67 @@ public class Benchmark {
 
                 System.out.println("------------------------");
 
-                Long withCacheAverage = (long) listOurCacheTimes.stream().mapToLong(v -> v).average().getAsDouble();
-                Long withCacheTotal = listOurCacheTimes.stream().mapToLong(v -> v).sum();
-                Long hits = (long) (cache.hits.isEmpty() ? 0 : cache.hits.size());
+                System.out.println(" cache 1");
+                Long withCacheAverage = (long) listOurCacheTimes1.stream().mapToLong(v -> v).average().getAsDouble();
+                Long withCacheTotal = listOurCacheTimes1.stream().mapToLong(v -> v).sum();
+                Long hits = (long) (cache1.hits.isEmpty() ? 0 : cache1.hits.size());
                 System.out.println("with cache average : " + withCacheAverage);
                 System.out.println("with cache total : " + withCacheTotal);
                 System.out.println("total cache hits : " + hits);
-                listOurCacheTimesAvgSummary.add(withCacheAverage);
-                listOurCacheTimesTotalSummary.add(withCacheTotal);
-                cacheHitsSummary.add(hits);
+
+                System.out.println(" cache 2");
+                withCacheAverage = (long) listOurCacheTimes2.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes2.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache2.hits.isEmpty() ? 0 : cache2.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 3");
+                withCacheAverage = (long) listOurCacheTimes3.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes3.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache3.hits.isEmpty() ? 0 : cache3.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 4");
+                withCacheAverage = (long) listOurCacheTimes4.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes4.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache4.hits.isEmpty() ? 0 : cache4.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 5");
+                withCacheAverage = (long) listOurCacheTimes5.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes5.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache5.hits.isEmpty() ? 0 : cache5.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 6");
+                withCacheAverage = (long) listOurCacheTimes6.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes6.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache6.hits.isEmpty() ? 0 : cache6.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
+
+                System.out.println(" cache 7");
+                withCacheAverage = (long) listOurCacheTimes7.stream().mapToLong(v -> v).average().getAsDouble();
+                withCacheTotal = listOurCacheTimes7.stream().mapToLong(v -> v).sum();
+                hits = (long) (cache7.hits.isEmpty() ? 0 : cache7.hits.size());
+                System.out.println("with cache average : " + withCacheAverage);
+                System.out.println("with cache total : " + withCacheTotal);
+                System.out.println("total cache hits : " + hits);
 
                 System.out.println("****************************");
                 System.gc();
             }
         }
 
-        for (int i=checkpointNum; i<=numOfQueries ; i+=checkpointNum){
-            int curIndex = i/checkpointNum - 1;
-            System.out.println("---------------------------------");
-            System.out.println(i);
-            System.out.println("no cache average : " + listNoCacheTimesAvgSummary.get(curIndex));
-            System.out.println("no cache total : " + listNoCacheTimesTotalSummary.get(curIndex));
-            System.out.println("with cache average : " + listOurCacheTimesAvgSummary.get(curIndex));
-            System.out.println("with cache total : " + listOurCacheTimesTotalSummary.get(curIndex));
-            System.out.println("total cache hits : " + cacheHitsSummary.get(curIndex));
-        }
     }
 
     // table
@@ -432,5 +575,12 @@ public class Benchmark {
         double [] result = new double[numOfColumns];
         Arrays.fill(result, MIN_VALUE);
         return result;
+    }
+
+    enum TestMode{
+        SIMPLE,
+        CACHE_POLICY,
+        SPATIAL_INDEXES,
+        MIXED
     }
 }
