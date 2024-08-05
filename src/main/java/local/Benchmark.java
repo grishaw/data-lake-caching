@@ -32,7 +32,7 @@ public class Benchmark {
         double w1 = Double.parseDouble(args[6]);
         double w2 = Double.parseDouble(args[7]);
         CacheType cacheType =  CacheType.valueOf(args[8]);
-        TestMode testMode =  TestMode.valueOf(args[8]);
+        TestMode testMode =  TestMode.valueOf(args[9]);
 
         long start = System.currentTimeMillis();
         runBenchmark(numOfColumns, numOfRecords, numOfFiles, numOfQueries, checkpointNum, cacheCapacity, w1, w2, cacheType, testMode);
