@@ -8,12 +8,6 @@
     <artifactId>caching</artifactId>
     <version>1.0-SNAPSHOT</version>
 
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-
     <dependencies>
         <dependency>
             <groupId>org.apache.spark</groupId>
@@ -37,6 +31,17 @@
             <groupId>com.databricks</groupId>
             <artifactId>spark-xml_2.12</artifactId>
             <version>0.17.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.tinspin</groupId>
+            <artifactId>tinspin-indexes</artifactId>
+            <version>2.1.3</version>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.1</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>
