@@ -127,8 +127,6 @@ public class Benchmark {
         // baseline
         ArrayList<Long> listNoCacheTimes = new ArrayList<>();
 
-        //TODO - add predicate caching (hashmap of interval and coverage)
-
         // our approach
         ArrayList<Long> listOurCacheTimes1 = new ArrayList<>(), listOurCacheTimes2 = new ArrayList<>(), listOurCacheTimes3 = new ArrayList<>(),
                 listOurCacheTimes4 = new ArrayList<>(), listOurCacheTimes5 = new ArrayList<>(),
@@ -443,6 +441,11 @@ public class Benchmark {
         return result;
     }
 
+    static void readFileFromCloudSimulation(){
+        long start = System.nanoTime();
+        while(start +  DELAY_FOR_CLOUD_READ >= System.nanoTime());
+    }
+
     // queries
     static int runQueryWithCache(HashMap<Integer, List<ArrayList<Integer>>> table, ArrayList<Pair<Integer, Integer>> interval, Cache cache){
         Set<Integer> coverage = new HashSet<>();
@@ -496,7 +499,7 @@ public class Benchmark {
         return resultCount;
     }
 
-    // intervals
+    // intervals and points
     static ArrayList<Pair<Integer, Integer>> generateInterval (int totalTerms, double percentageOfNonEmptyTerms){
         ArrayList<Pair<Integer, Integer>> result = new ArrayList<>(totalTerms);
 
@@ -549,9 +552,31 @@ public class Benchmark {
 
     }
 
-    static void readFileFromCloudSimulation(){
-        long start = System.nanoTime();
-        while(start +  DELAY_FOR_CLOUD_READ >= System.nanoTime());
+    static double intervalVolume(ArrayList<Pair<Integer, Integer>> interval){
+        return interval.stream().
+                mapToInt(p -> p.getRight() - p.getLeft())
+                .mapToDouble(x -> Math.log(x))
+                .sum();
+    }
+
+    static double[] mapIntervalToPoint(ArrayList<Pair<Integer, Integer>> interval){
+        double [] result = new double[interval.size() * 2];
+
+        for (int i=0; i< interval.size(); i++){
+            result[i] = interval.get(i).getLeft();
+        }
+
+        for (int i=0; i< interval.size(); i++){
+            result[interval.size() + i] = (-1) * interval.get(i).getRight();
+        }
+
+        return result;
+    }
+
+    static double [] getQueryMin(int numOfColumns){
+        double [] result = new double[numOfColumns];
+        Arrays.fill(result, MIN_VALUE);
+        return result;
     }
 
     // cache
@@ -709,13 +734,6 @@ public class Benchmark {
         }
     }
 
-    static double intervalVolume(ArrayList<Pair<Integer, Integer>> interval){
-        return interval.stream().
-                mapToInt(p -> p.getRight() - p.getLeft())
-                .mapToDouble(x -> Math.log(x))
-                .sum();
-    }
-
     static double getMaxVolume(int numOfCols){
         ArrayList<Pair<Integer, Integer>> interval = new ArrayList<>(numOfCols);
 
@@ -732,26 +750,6 @@ public class Benchmark {
         KD_TREE,
         QUAD_TREE,
         PH_TREE
-    }
-
-    static double[] mapIntervalToPoint(ArrayList<Pair<Integer, Integer>> interval){
-        double [] result = new double[interval.size() * 2];
-
-        for (int i=0; i< interval.size(); i++){
-            result[i] = interval.get(i).getLeft();
-        }
-
-        for (int i=0; i< interval.size(); i++){
-            result[interval.size() + i] = (-1) * interval.get(i).getRight();
-        }
-
-        return result;
-    }
-
-    static double [] getQueryMin(int numOfColumns){
-        double [] result = new double[numOfColumns];
-        Arrays.fill(result, MIN_VALUE);
-        return result;
     }
 
     enum TestMode{
