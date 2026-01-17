@@ -6,9 +6,11 @@ import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.SparkSession;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.apache.spark.sql.functions.*;
@@ -74,9 +76,8 @@ public class Benchmark {
             int quantityFrom = 1;
             int quantityTo = ThreadLocalRandom.current().nextInt(1,quantityToMax);
 
-            int year = ThreadLocalRandom.current().nextInt(1993,1998);
-            String shipDateFrom = LocalDate.of(year, 1, 1).toString();
-            String shipDateTo = LocalDate.of(year + 1, 1, 1).toString();
+            String shipDateFrom = "1998-12-01";
+            String shipDateTo = generateRandomDate();
 
             double discountFrom = 0.00;
             double discountTo = ThreadLocalRandom.current().nextDouble(0.00, discountToMax);
@@ -252,6 +253,21 @@ public class Benchmark {
         NO_CACHE,
         NAIVE_CACHE,
         COVERAGE_CACHE
+    }
+
+    public static String generateRandomDate() {
+        String startDate = "1998-12-01";
+        String endDate = "1998-12-30";
+        
+        DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDate start = LocalDate.parse(startDate, DATE_FORMATTER);
+        LocalDate end = LocalDate.parse(endDate, DATE_FORMATTER);
+
+        long startEpochDay = start.toEpochDay();
+        long endEpochDay = end.toEpochDay();
+        long randomDay = startEpochDay + new Random().nextInt((int) (endEpochDay - startEpochDay + 1));
+
+        return LocalDate.ofEpochDay(randomDay).format(DATE_FORMATTER);
     }
 
 }
