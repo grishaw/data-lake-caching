@@ -1,0 +1,1 @@
+layout=data/sf1/random_100 iterations=50 threshold=50 repeats=1 quantityToMax=50 discountToMax=1
