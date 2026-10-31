@@ -1,0 +1,13 @@
+data/
+plans/
+traces/
+private/
+target/
+work/
+results/**/*
+!results/*/
+!results/*/summary.md
+!results/stage_a_original/**
+results/stage_a_original/**/std*.log
+docker/*.tgz
+__pycache__/

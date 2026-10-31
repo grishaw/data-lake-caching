@@ -1,0 +1,1 @@
+layout=data/sf10/random_1000 iterations=10 threshold=500 repeats=1 quantityToMax=50 discountToMax=1

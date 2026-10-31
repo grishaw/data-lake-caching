@@ -1,0 +1,22 @@
+# Run with DOCKER_HOST pointing at the dedicated Colima profile (see docs/REPRODUCE.md).
+services:
+  lab:
+    build:
+      context: ./docker
+    image: pcc-eval-lab:1
+    working_dir: /work/eval
+    command: ["sleep", "infinity"]
+    cpus: 6
+    mem_limit: 12g
+    memswap_limit: 12g
+    pids_limit: 4096
+    volumes:
+      - ..:/work
+      - ../../pcc-eval-original:/work-original:ro
+      - m2:/root/.m2
+      - original-build:/work-original-build
+    profiles: ["lab"]
+
+volumes:
+  m2:
+  original-build:
